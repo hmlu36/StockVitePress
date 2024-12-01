@@ -1,8 +1,8 @@
 name: Generate Data and Update GitHub Pages
 
 on:
-  push:
-    branches: [main]
+  repository_dispatch:
+    types: [run-python-script]
 
   workflow_dispatch:
 
