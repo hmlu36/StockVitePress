@@ -2,7 +2,8 @@ import { defineConfig } from 'vitepress'
 
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
-  title: "StockVitePress",
+  base: "StockVitePress",
+  title: "Stock VitePress",
   description: "use vitepress display stock info",
   themeConfig: {
     // https://vitepress.dev/reference/default-theme-config
