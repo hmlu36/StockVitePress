@@ -4,4 +4,4 @@ import CsvTable from '/.vitepress/components/CsvTable.vue';
 
 # Hello World
 
-<CsvTable />
+<CsvTable csvFilePath="release.csv" />

@@ -12,7 +12,8 @@
         </tr>
       </tbody>
     </table>
-    <div v-else>Loading...</div>
+    <div v-else-if="loading">Loading...</div>
+    <div v-else>Error loading data</div>
   </div>
 </template>
 
@@ -23,22 +24,34 @@ export default {
   data() {
     return {
       headers: [],
-      data: []
+      data: [],
+      loading: true,
+      error: false
     };
   },
   mounted() {
     this.loadCsv();
   },
   methods: {
-    loadCsv() {
-      const csvPath = '/release.csv';
-      fetch(csvPath)
-        .then(response => response.text())
-        .then(csvText => {
-          const parsed = Papa.parse(csvText, { header: true });
-          this.headers = parsed.meta.fields;
-          this.data = parsed.data;
-        });
+    async loadCsv() {
+      try {
+        const isProduction = process.env.NODE_ENV === 'production';
+        const BASE_URL = isProduction ? '/StockVitePress/' : '';
+        const csvPath = `${BASE_URL}/release.csv`;
+        const response = await fetch(csvPath);
+        if (!response.ok) {
+          throw new Error('Network response was not ok');
+        }
+        const csvText = await response.text();
+        const parsed = Papa.parse(csvText, { header: true });
+        this.headers = parsed.meta.fields;
+        this.data = parsed.data;
+      } catch (error) {
+        console.error('Error loading CSV:', error);
+        this.error = true;
+      } finally {
+        this.loading = false;
+      }
     }
   }
 };
@@ -49,10 +62,13 @@ table {
   width: 100%;
   border-collapse: collapse;
 }
-th, td {
+
+th,
+td {
   border: 1px solid #ddd;
   padding: 8px;
 }
+
 th {
   background-color: #f2f2f2;
 }
