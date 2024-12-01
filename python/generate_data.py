@@ -10,6 +10,11 @@ def fetch_data():
 
     # Convert JSON data to DataFrame
     df = pd.DataFrame(json_data)
+    
+    # Ensure the public directory exists
+    public_dir = 'public'
+    if not os.path.exists(public_dir):
+        os.makedirs(public_dir)
 
     # Save DataFrame to CSV
     output_path = os.path.join('public', 'release.csv')
