@@ -2,7 +2,7 @@ name: Generate Data and Update GitHub Pages
 
 on:
   schedule:
-    - cron: '* * * */1 *'
+    - cron: '0 15 * * *'  # 每天下午3點運行
 
   workflow_dispatch:
 
@@ -29,7 +29,8 @@ jobs:
           pip install -r python/requirements.txt
 
       - name: execute py script
-        run: python python/generate_data.py
+        run: |
+          python python/step0_institution_iInvestors.py
             
       - name: commit files
         run: |

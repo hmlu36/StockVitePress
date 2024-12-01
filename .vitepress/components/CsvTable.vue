@@ -21,6 +21,12 @@
 import Papa from 'papaparse';
 
 export default {
+  props: {
+    csvFilePath: {
+      type: String,
+      required: true
+    }
+  },
   data() {
     return {
       headers: [],
@@ -36,8 +42,8 @@ export default {
     async loadCsv() {
       try {
         const isProduction = process.env.NODE_ENV === 'production';
-        const BASE_URL = isProduction ? '/StockVitePress/' : '';
-        const csvPath = `${BASE_URL}/release.csv`;
+        const BASE_URL = isProduction ? '/StockVitePress' : '';
+        const csvPath = `${BASE_URL}${this.csvFilePath}`;
         const response = await fetch(csvPath);
         if (!response.ok) {
           throw new Error('Network response was not ok');

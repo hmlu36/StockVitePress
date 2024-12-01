@@ -3,15 +3,23 @@ import time
 import random
 import requests
 import pyuser_agent
+from urllib.parse import urlparse
 import pandas as pd
 from bs4 import BeautifulSoup
 from io import StringIO
+from datetime import datetime
+from dateutil.relativedelta import relativedelta
 
-def get_headers():
+def get_headers(url):
     """Generate random user-agent headers."""
     ua = pyuser_agent.UA()
     user_agent = ua.random
-    headers = {"user-agent": user_agent}
+    parsed_url = urlparse(url)
+    referer = f"{parsed_url.scheme}://{parsed_url.netloc}"
+    headers = {
+        "User-Agent": user_agent,
+        "Referer": referer
+    }
     return headers
 
 def sleep():
@@ -61,3 +69,13 @@ def get_dataframe_by_css_selector(url, css_selector):
             return df
 
     return pd.DataFrame()
+
+
+def get_business_day(count=1):
+    end_date = datetime.today()
+    start_date = end_date - relativedelta(months=1)  # 假設從一個月前開始
+    business_days = pd.bdate_range(start=start_date, end=end_date)
+    if count <= len(business_days):
+        return business_days[-count]  # 取出往前第 count 個營業日
+    else:
+        raise ValueError("Count exceeds the number of business days in the range")

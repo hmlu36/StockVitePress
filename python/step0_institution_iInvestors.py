@@ -1,13 +1,15 @@
 import pandas as pd
 import requests
 from datetime import datetime
-from dateutil.relativedelta import relativedelta
-from utils import get_headers, sleep
+import os
+from utils import get_headers, sleep, get_business_day
 
 def fetch_exchange_data(date):
     """Fetch exchange data for a specific date."""
     url = f"https://www.twse.com.tw/exchangeReport/FMTQIK?response=json&date={date.strftime('%Y%m%d')}"
-    response = requests.get(url, headers=get_headers())
+    headers = get_headers(url)
+    print(headers)
+    response = requests.get(url, headers=headers)
     response.raise_for_status()  # Raise an exception for HTTP errors
     return response.json()
 
@@ -22,17 +24,17 @@ def process_exchange_data(json_data):
 def get_daily_exchange_amount(day_count=1):
     """Fetch daily exchange amount for a given number of days."""
     sum_df = pd.DataFrame()
-    count = 0
+    count = 1
 
     while sum_df.shape[1] < day_count:
-        temp_date = datetime.today() - relativedelta(months=count)
+        temp_date = get_business_day(count)
         json_data = fetch_exchange_data(temp_date)
         df = process_exchange_data(json_data)
 
         sum_df = pd.concat([sum_df, df], axis=1) if not sum_df.empty else df
         count += 1
         if day_count > 1:
-            sleep()
+            sleep()  # 增加延遲時間
 
     sum_df = sum_df.sort_values(by="日期", axis=1, ascending=False)
     return sum_df.iloc[:, :day_count]
@@ -40,7 +42,11 @@ def get_daily_exchange_amount(day_count=1):
 def fetch_investors_data(date):
     """Fetch institutional investors data for a specific date."""
     url = f"https://www.twse.com.tw/fund/BFI82U?response=json&dayDate={date.strftime('%Y%m%d')}&type=day"
-    response = requests.get(url, headers=get_headers())
+    headers = get_headers(url)
+    headers.update({
+        'Referer': 'https://www.twse.com.tw/'
+    })
+    response = requests.get(url, headers=headers)
     response.raise_for_status()  # Raise an exception for HTTP errors
     return response.json()
 
@@ -78,7 +84,7 @@ def get_institutional_investors_exchange(day_count=1):
 
         count += 1
         if day_count > 1:
-            sleep()
+            sleep()  # 增加延遲時間
 
     sum_df = sum_df.set_index("項目")
     return sum_df
@@ -86,5 +92,12 @@ def get_institutional_investors_exchange(day_count=1):
 # Example usage
 result = get_institutional_investors_exchange()
 print(result)
-result = get_daily_exchange_amount()
-print(result)
+
+# Ensure the public directory exists
+public_dir = 'public'
+if not os.path.exists(public_dir):
+    os.makedirs(public_dir)
+
+# Save DataFrame to CSV
+output_path = os.path.join('public', 'institutional_investors_exchange.csv')
+result.to_csv(output_path, encoding='utf-8-sig')
