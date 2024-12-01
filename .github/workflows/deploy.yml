@@ -58,24 +58,3 @@ jobs:
         uses: actions/upload-pages-artifact@v3
         with:
           path: .vitepress/dist
-
-  # Deployment job
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    needs: build
-    runs-on: ubuntu-latest
-    name: Deploy
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
-        
-      - name: Trigger Python Workflow
-        run: |
-          curl -X POST \
-          -H "Accept: application/vnd.github.v3+json" \
-          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-          https://api.github.com/repos/${{ github.repository }}/dispatches \
-          -d '{"event_type":"run-python-script"}'
