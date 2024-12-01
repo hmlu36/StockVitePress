@@ -1,3 +1,4 @@
+import os
 import requests
 import pandas as pd
 
@@ -10,8 +11,16 @@ def fetch_data():
     # Convert JSON data to DataFrame
     df = pd.DataFrame(json_data)
 
+    # Determine the output directory based on NODE_ENV environment variable
+    node_env = os.getenv('NODE_ENV', 'development')
+    if node_env == 'production':
+        output_dir = 'docs/.vitepress/public'
+    else:
+        output_dir = 'public'
+        
     # Save DataFrame to CSV
-    df.to_csv('public/release.csv', index=False, encoding='utf-8-sig')
+    output_path = os.path.join(output_dir, 'release.csv')
+    df.to_csv(output_path, index=False, encoding='utf-8-sig')
 
 if __name__ == "__main__":
     fetch_data()

@@ -29,11 +29,7 @@ jobs:
 
     - name: Run generate_data.py
       run: |
-        python python/generate_data.py
-
-    - name: Move generated data to VitePress public directory
-      run: |
-        mv public/release.csv docs/.vitepress/public/release.csv
+        NODE_ENV=production python python/generate_data.py
 
     - name: Commit and push changes
       run: |
