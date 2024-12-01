@@ -53,7 +53,7 @@ jobs:
         run: echo "NODE_ENV=production" >> "$GITHUB_ENV"
 
       - name: Build with VitePress
-        run: npm run build # Ensure this matches the build script in your package.json
+        run: npm run docs:build # Ensure this matches the build script in your package.json
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
