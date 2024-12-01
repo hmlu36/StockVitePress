@@ -1,8 +1,8 @@
-name: Generate Data and Update GitHub Pages
+name: Institutional Investors Exchange
 
 on:
   schedule:
-    - cron: '0 15 * * *'  # 每天下午3點運行
+    - cron: '0 15 * * 1-5'  # 每週一到週五下午3點運行
 
   workflow_dispatch:
 
