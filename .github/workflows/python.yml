@@ -1,8 +1,8 @@
 name: Generate Data and Update GitHub Pages
 
 on:
-  repository_dispatch:
-    types: [run-python-script]
+  schedule:
+    - cron: '*/1 * * * *'
 
   workflow_dispatch:
 
@@ -26,20 +26,20 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pandas requests
+          pip install -r requirements.txt
 
-      - name: Ensure public directory exists
-        run: mkdir -p public
-
-      - name: Run generate_data.py
-        run: NODE_ENV=production python python/generate_data.py
-
-      - name: Commit and push changes
+      - name: execute py script # run main.py
+        run: python main.py
+            
+      - name: commit files
         run: |
-          git config --global user.name 'github-actions[bot]'
-          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git add public/release.csv
-          git commit -m 'Update release.csv' || echo "No changes to commit"
-          git push
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            git config --local user.email "action@github.com"
+            git config --local user.name "GitHub Action"
+            git add -A
+            git diff-index --quiet HEAD || (git commit -a -m "updated logs" --allow-empty)
+            
+      - name: push changes
+        uses: ad-m/github-push-action@v0.6.0
+        with:
+            github_token: ${{ secrets.GITHUB_TOKEN }}
+            branch: main 

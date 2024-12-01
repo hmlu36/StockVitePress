@@ -1,8 +1,11 @@
 import { defineConfig } from 'vitepress'
 
+const isProduction = process.env.NODE_ENV === 'production';
+const BASE_URL = isProduction ? '/SocialStoryVitePress/' : '';
+
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
-  base: "/StockVitePress/",
+  base: `${BASE_URL}`,
   title: "Stock VitePress",
   description: "use vitepress display stock info",
   themeConfig: {
