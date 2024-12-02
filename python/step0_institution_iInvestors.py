@@ -91,7 +91,7 @@ def get_institutional_investors_exchange(day_count=1):
 
 if __name__ == "__main__":
     df = get_institutional_investors_exchange()
-    print(result)
+    print(df)
 
     # Ensure the public directory exists
     public_dir = 'public'
