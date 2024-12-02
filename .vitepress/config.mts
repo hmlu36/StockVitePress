@@ -19,7 +19,7 @@ export default defineConfig({
       {
         text: 'Examples',
         items: [
-          { text: 'Markdown Examples', link: '/markdown-examples' },
+          { text: '篩選基本資料', link: '/basic_stock_info' },
           { text: '三大法人', link: '/institutionI_investors' }
         ]
       }

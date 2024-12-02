@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div class="table-container">
     <table v-if="data.length">
       <thead>
         <tr>
@@ -8,7 +8,7 @@
       </thead>
       <tbody>
         <tr v-for="(row, rowIndex) in data" :key="rowIndex">
-          <td v-for="(cell, cellIndex) in row" :key="cellIndex">{{ cell }}</td>
+          <td v-for="(cell, cellIndex) in row" :class="{ numeric: isNumeric(cell) }" :key="cellIndex">{{ cell }}</td>
         </tr>
       </tbody>
     </table>
@@ -58,24 +58,34 @@ export default {
       } finally {
         this.loading = false;
       }
+    },
+    isNumeric(value) {
+      return !isNaN(parseFloat(value)) && isFinite(value);
     }
   }
 };
 </script>
 
 <style>
-table {
+
+.table-container table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed; 
 }
 
-th,
-td {
-  border: 1px solid #ddd;
-  padding: 8px;
+.table-container th,
+.table-container td {
+  white-space: nowrap;
 }
 
-th {
-  background-color: #f2f2f2;
+.table-container th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.numeric {
+  text-align: right;
 }
 </style>

@@ -41,7 +41,7 @@ def get_dataframe_by_css_selector(url, css_selector):
     Returns:
     pd.DataFrame: The parsed data as a DataFrame.
     """
-    headers = get_headers()
+    headers = get_headers(url)
     
     try:
         response = requests.get(url, headers=headers, timeout=(5, 10))

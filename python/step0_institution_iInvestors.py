@@ -89,15 +89,15 @@ def get_institutional_investors_exchange(day_count=1):
     sum_df = sum_df.set_index("項目")
     return sum_df
 
-# Example usage
-result = get_institutional_investors_exchange()
-print(result)
+if __name__ == "__main__":
+    df = get_institutional_investors_exchange()
+    print(result)
 
-# Ensure the public directory exists
-public_dir = 'public'
-if not os.path.exists(public_dir):
-    os.makedirs(public_dir)
+    # Ensure the public directory exists
+    public_dir = 'public'
+    if not os.path.exists(public_dir):
+        os.makedirs(public_dir)
 
-# Save DataFrame to CSV
-output_path = os.path.join('public', 'institutional_investors_exchange.csv')
-result.to_csv(output_path, encoding='utf-8-sig')
+    # Save DataFrame to CSV
+    output_path = os.path.join('public', 'institutional_investors_exchange.csv')
+    df.to_csv(output_path, encoding='utf-8-sig')
