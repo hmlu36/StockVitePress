@@ -32,12 +32,14 @@ jobs:
         run: |
           python python/step0_institution_iInvestors.py
             
-      - name: commit files
+      - name: Commit and Push changes
         run: |
-            git config --local user.email "action@github.com"
-            git config --local user.name "GitHub Action"
-            git add -A
-            git diff-index --quiet HEAD || (git commit -a -m "updated logs" --allow-empty)
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git pull origin main  # Pull the latest changes
+          git add -A
+          git diff-index --quiet HEAD || (git commit -a -m "updated logs" --allow-empty)
+          git push origin main  # Push the changes
             
       - name: push changes
         uses: ad-m/github-push-action@v0.6.0
