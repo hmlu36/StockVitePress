@@ -3,7 +3,6 @@ name: Basic Stock Info
 on:
   schedule:
     - cron: '0 0 1 * *'  # 每月1日0點運行
-      timezone: 'Asia/Taipei'  # 指定時區為台北時間
 
   workflow_dispatch:
 

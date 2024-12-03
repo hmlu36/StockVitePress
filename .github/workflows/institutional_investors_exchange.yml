@@ -2,8 +2,7 @@ name: Institutional Investors Exchange
 
 on:
   schedule:
-    - cron: '0 15 * * 1-5'  # 每週一到週五下午3點運行
-      timezone: 'Asia/Taipei'  # 指定時區為台北時間
+    - cron: '0 7 * * 1-5'  # 每週一到週五下午3點運行
       
   workflow_dispatch:
 
