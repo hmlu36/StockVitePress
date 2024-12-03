@@ -75,7 +75,7 @@ def get_institutional_investors_exchange(day_count=1):
 
     while sum_df.shape[1] < day_count:
         temp_date = datetime.today() - pd.tseries.offsets.BDay(count)
-        mingo_date_str = str(temp_date.year - 1911) + "/" + temp_date.strftime("%m/%d")
+        mingo_date_str = temp_date.strftime("%Y/%m/%d")
         json_data = fetch_investors_data(temp_date)
 
         if json_data["stat"] == "OK":
