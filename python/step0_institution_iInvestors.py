@@ -54,7 +54,7 @@ def process_investors_data(json_data, amount_df, mingo_date_str):
     """Process the JSON data into a DataFrame."""
     df = pd.DataFrame(json_data["data"], columns=json_data["fields"])
     df["買賣差額"] = pd.to_numeric(df["買賣差額"].str.strip().str.replace(",", ""))
-    total = (int(df.loc[5, "買進金額"].replace(",", "")) + int(df.loc[5, "賣出金額"].replace(",", ""))) / 2
+    total = (pd.to_numeric(df.loc[5, "買進金額"].replace(",", "")) + pd.to_numeric(df.loc[5, "賣出金額"].replace(",", ""))) / 2
 
     df = df[["單位名稱", "買賣差額"]]
     temp_df = pd.DataFrame([{"單位名稱": "市場總交易金額", "買賣差額": amount_df.loc["總成交金額", mingo_date_str]}])
@@ -90,9 +90,8 @@ def get_institutional_investors_exchange(day_count=1):
     return sum_df
 
 if __name__ == "__main__":
-    df = get_institutional_investors_exchange()
+    df = get_institutional_investors_exchange(1)
     print(df)
-
     # Ensure the public directory exists
     public_dir = 'public'
     if not os.path.exists(public_dir):

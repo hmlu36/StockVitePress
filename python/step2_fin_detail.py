@@ -1,6 +1,6 @@
 import time
 import random
-import src.Utils2 as Utils2
+import utils
 from decimal import Decimal, ROUND_HALF_UP
 import pandas as pd
 
@@ -14,8 +14,6 @@ import pandas as pd
 7. ROE > 10 %
 8. 董監持股比例 > 20
 """
-
-
 def GetFinData(stockId, finType):
     # 損益表
     if finType == "income_statement":
@@ -31,10 +29,10 @@ def GetFinData(stockId, finType):
     
     css_selector = "#txtFinBody"
     try:
-        df = Utils2.GetDataFrameByCssSelector(url, css_selector)
+        df = utils.get_dataframe_by_css_selector(url, css_selector)
     except:
         time.sleep(random.randint(20, 30))
-        df = Utils2.GetDataFrameByCssSelector(url, css_selector)
+        df = utils.get_dataframe_by_css_selector(url, css_selector)
     # print(df)
 
     # 所有columns和index名稱
@@ -205,5 +203,5 @@ def GetFinDetail(stockId):
 """
 
 # ------ 測試 ------
-# data = GetFinDetail("8150")
-# print(data)
+data = GetFinDetail("8150")
+print(data)

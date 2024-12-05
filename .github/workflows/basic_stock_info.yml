@@ -38,7 +38,7 @@ jobs:
           git config --local user.name "GitHub Action"
           git pull origin main  # Pull the latest changes
           git add -A
-          git diff-index --quiet HEAD || (git commit -a -m "updated logs" --allow-empty)
+          git diff-index --quiet HEAD || (git commit -a -m "Basic Stock Info" --allow-empty)
           git push origin main  # Push the changes
             
       - name: push changes
