@@ -6,6 +6,7 @@ import re
 from bs4 import BeautifulSoup
 import ssl
 from utils import get_root_path, get_dataframe_by_css_selector
+import os
 
 # 發現是urlopen https時需要驗證一次SSL證書，當網站目標使用自簽名的證書時就會跳出這個錯誤
 ssl._create_default_https_context = ssl._create_unverified_context
@@ -94,7 +95,6 @@ def get_basic_stock_info(filter=False):
         merge_df = pd.merge(merge_df, shareholder_distribution_df, on="證券代號")
 
     merge_df = merge_df[["證券代號", "證券名稱"] + [col for col in merge_df.columns if col not in ["證券代號", "證券名稱"]]]
-    merge_df.to_csv(f"{get_root_path()}/Data/Temp/基本資訊.csv", encoding="utf_8_sig")
     return merge_df
 
 def get_financial_statement(type='綜合損益'):
@@ -201,7 +201,13 @@ def get_director_sharehold():
     df = df.rename(columns={"持股比率 %": "全體董監持股(%)"})
     return df[['證券代號', '全體董監持股(%)']]
 
-# Example usage
 if __name__ == "__main__":
+
+    # Ensure the public directory exists
+    public_dir = 'public'
+    if not os.path.exists(public_dir):
+        os.makedirs(public_dir)
+        
     df = get_basic_stock_info(True)
-    df.to_csv(f"{get_root_path()}/content/basic_stock_info.csv", encoding="utf_8_sig")
+    output_path = os.path.join('public', 'basic_stock_info.csv')
+    df.to_csv(output_path, encoding='utf-8-sig', index=False)

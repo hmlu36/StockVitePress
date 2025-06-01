@@ -1,8 +1,8 @@
-name: Generate Data and Update GitHub Pages
+name: Basic Stock Info
 
 on:
   schedule:
-    - cron: '*/1 * * * *'
+    - cron: '0 0 1 * *'  # 每月1日0點運行
 
   workflow_dispatch:
 
@@ -29,17 +29,20 @@ jobs:
           pip install -r python/requirements.txt
 
       - name: execute py script
-        run: python python/generate_data.py
-            
-      - name: commit files
         run: |
-            git config --local user.email "action@github.com"
-            git config --local user.name "GitHub Action"
-            git add -A
-            git diff-index --quiet HEAD || (git commit -a -m "updated logs" --allow-empty)
+          python python/basic_stock_info.py
+            
+      - name: Commit and Push changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git pull origin main  # Pull the latest changes
+          git add -A
+          git diff-index --quiet HEAD || (git commit -a -m "Basic Stock Info" --allow-empty)
+          git push origin main  # Push the changes
             
       - name: push changes
         uses: ad-m/github-push-action@v0.6.0
         with:
             github_token: ${{ secrets.GITHUB_TOKEN }}
-            branch: main 
+            branch: main

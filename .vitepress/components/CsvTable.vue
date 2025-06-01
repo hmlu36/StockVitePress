@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div class="table-container">
     <table v-if="data.length">
       <thead>
         <tr>
@@ -8,11 +8,12 @@
       </thead>
       <tbody>
         <tr v-for="(row, rowIndex) in data" :key="rowIndex">
-          <td v-for="(cell, cellIndex) in row" :key="cellIndex">{{ cell }}</td>
+          <td v-for="(cell, cellIndex) in row" :class="{ numeric: isNumeric(cell) }" :key="cellIndex">{{ cell }}</td>
         </tr>
       </tbody>
     </table>
-    <div v-else>Loading...</div>
+    <div v-else-if="loading">Loading...</div>
+    <div v-else>Error loading data</div>
   </div>
 </template>
 
@@ -20,40 +21,71 @@
 import Papa from 'papaparse';
 
 export default {
+  props: {
+    csvFilePath: {
+      type: String,
+      required: true
+    }
+  },
   data() {
     return {
       headers: [],
-      data: []
+      data: [],
+      loading: true,
+      error: false
     };
   },
   mounted() {
     this.loadCsv();
   },
   methods: {
-    loadCsv() {
-      const csvPath = '/release.csv';
-      fetch(csvPath)
-        .then(response => response.text())
-        .then(csvText => {
-          const parsed = Papa.parse(csvText, { header: true });
-          this.headers = parsed.meta.fields;
-          this.data = parsed.data;
-        });
+    async loadCsv() {
+      try {
+        const isProduction = process.env.NODE_ENV === 'production';
+        const BASE_URL = isProduction ? '/StockVitePress' : '';
+        const csvPath = `${BASE_URL}/${this.csvFilePath}`;
+        const response = await fetch(csvPath);
+        if (!response.ok) {
+          throw new Error('Network response was not ok');
+        }
+        const csvText = await response.text();
+        const parsed = Papa.parse(csvText, { header: true });
+        this.headers = parsed.meta.fields;
+        this.data = parsed.data;
+      } catch (error) {
+        console.error('Error loading CSV:', error);
+        this.error = true;
+      } finally {
+        this.loading = false;
+      }
+    },
+    isNumeric(value) {
+      return !isNaN(parseFloat(value)) && isFinite(value);
     }
   }
 };
 </script>
 
 <style>
-table {
+
+.table-container table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed; 
 }
-th, td {
-  border: 1px solid #ddd;
-  padding: 8px;
+
+.table-container th,
+.table-container td {
+  white-space: nowrap;
 }
-th {
-  background-color: #f2f2f2;
+
+.table-container th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.numeric {
+  text-align: right;
 }
 </style>
