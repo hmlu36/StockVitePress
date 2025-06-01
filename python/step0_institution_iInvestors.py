@@ -9,7 +9,7 @@ def fetch_exchange_data(date):
     url = f"https://www.twse.com.tw/exchangeReport/FMTQIK?response=json"
     headers = get_headers(url)
     print(headers)
-    response = requests.get(url, headers=headers)
+    response = requests.get(url, headers=headers, verify=False, timeout=30)
     response.raise_for_status()  # Raise an exception for HTTP errors
     return response.json()
 
