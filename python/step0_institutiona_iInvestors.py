@@ -6,7 +6,7 @@ from utils import get_headers, sleep
 
 def fetch_exchange_data(date):
     """Fetch exchange data for a specific date."""
-    url = f"https://www.twse.com.tw/exchangeReport/FMTQIK?response=json&date={date.strftime('%Y%m%d')}"
+    url = f"https://www.twse.com.tw/exchangeReport/FMTQIK?response=json"
     response = requests.get(url, headers=get_headers())
     response.raise_for_status()  # Raise an exception for HTTP errors
     return response.json()
@@ -27,6 +27,7 @@ def get_daily_exchange_amount(day_count=1):
     while sum_df.shape[1] < day_count:
         temp_date = datetime.today() - relativedelta(months=count)
         json_data = fetch_exchange_data(temp_date)
+        print(json_data)
         df = process_exchange_data(json_data)
 
         sum_df = pd.concat([sum_df, df], axis=1) if not sum_df.empty else df
