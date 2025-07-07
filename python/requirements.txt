@@ -1,6 +1,7 @@
 pandas
 bs4
 numpy
+certifi
 requests
 lxml
 pyuser_agent

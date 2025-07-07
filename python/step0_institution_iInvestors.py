@@ -2,16 +2,20 @@ import pandas as pd
 import requests
 from datetime import datetime
 import os
-from utils import get_headers, sleep, get_business_day
+from utils import get_headers, sleep, get_business_day, init
+
+init()
+
 
 def fetch_exchange_data(date):
     """Fetch exchange data for a specific date."""
     url = f"https://www.twse.com.tw/exchangeReport/FMTQIK?response=json&date={date.strftime('%Y%m%d')}"
     headers = get_headers(url)
-    print(headers)
-    response = requests.get(url, headers=headers)
+    # print(headers)
+    response = requests.get(url, headers=headers, verify=False)
     response.raise_for_status()  # Raise an exception for HTTP errors
     return response.json()
+
 
 def process_exchange_data(json_data):
     """Process the JSON data into a DataFrame."""
@@ -20,6 +24,7 @@ def process_exchange_data(json_data):
     df["成交金額"] = pd.to_numeric(df["成交金額"].str.strip().str.replace(",", ""))
     df = df.rename(columns={"成交金額": "總成交金額"})
     return df.set_index("日期").T
+
 
 def get_daily_exchange_amount(day_count=1):
     """Fetch daily exchange amount for a given number of days."""
@@ -39,33 +44,55 @@ def get_daily_exchange_amount(day_count=1):
     sum_df = sum_df.sort_values(by="日期", axis=1, ascending=False)
     return sum_df.iloc[:, :day_count]
 
+
 def fetch_investors_data(date):
     """Fetch institutional investors data for a specific date."""
     url = f"https://www.twse.com.tw/fund/BFI82U?response=json&dayDate={date.strftime('%Y%m%d')}&type=day"
     headers = get_headers(url)
-    headers.update({
-        'Referer': 'https://www.twse.com.tw/'
-    })
-    response = requests.get(url, headers=headers)
+    headers.update({"Referer": "https://www.twse.com.tw/"})
+    response = requests.get(url, headers=headers, verify=False)
     response.raise_for_status()  # Raise an exception for HTTP errors
     return response.json()
+
 
 def process_investors_data(json_data, amount_df, mingo_date_str):
     """Process the JSON data into a DataFrame."""
     df = pd.DataFrame(json_data["data"], columns=json_data["fields"])
     df["買賣差額"] = pd.to_numeric(df["買賣差額"].str.strip().str.replace(",", ""))
-    total = (pd.to_numeric(df.loc[5, "買進金額"].replace(",", "")) + pd.to_numeric(df.loc[5, "賣出金額"].replace(",", ""))) / 2
+    total = (
+        pd.to_numeric(df.loc[5, "買進金額"].replace(",", ""))
+        + pd.to_numeric(df.loc[5, "賣出金額"].replace(",", ""))
+    ) / 2
 
     df = df[["單位名稱", "買賣差額"]]
-    temp_df = pd.DataFrame([{"單位名稱": "市場總交易金額", "買賣差額": amount_df.loc["總成交金額", mingo_date_str]}])
+    temp_df = pd.DataFrame(
+        [
+            {
+                "單位名稱": "市場總交易金額",
+                "買賣差額": amount_df.loc["總成交金額", mingo_date_str],
+            }
+        ]
+    )
     df = pd.concat([df, temp_df], axis=0, ignore_index=True)
 
-    df["買賣差額"] = (pd.to_numeric(df["買賣差額"], downcast="float") / 100000000).round(3)
-    temp_df = pd.DataFrame([{"單位名稱": "法人成交比重", "買賣差額": (total / amount_df.loc["總成交金額", mingo_date_str] * 100).round(2)}])
+    df["買賣差額"] = (
+        pd.to_numeric(df["買賣差額"], downcast="float") / 100000000
+    ).round(3)
+    temp_df = pd.DataFrame(
+        [
+            {
+                "單位名稱": "法人成交比重",
+                "買賣差額": (
+                    total / amount_df.loc["總成交金額", mingo_date_str] * 100
+                ).round(2),
+            }
+        ]
+    )
     df = pd.concat([df, temp_df], axis=0, ignore_index=True)
 
     df = df.rename(columns={"單位名稱": "項目", "買賣差額": mingo_date_str})
     return df
+
 
 def get_institutional_investors_exchange(day_count=1):
     """Fetch institutional investors exchange data for a given number of days."""
@@ -89,14 +116,15 @@ def get_institutional_investors_exchange(day_count=1):
     sum_df = sum_df.set_index("項目")
     return sum_df
 
+
 if __name__ == "__main__":
     df = get_institutional_investors_exchange(1)
     print(df)
     # Ensure the public directory exists
-    public_dir = 'public'
+    public_dir = "public"
     if not os.path.exists(public_dir):
         os.makedirs(public_dir)
 
     # Save DataFrame to CSV
-    output_path = os.path.join('public', 'institutional_investors_exchange.csv')
-    df.to_csv(output_path, encoding='utf-8-sig')
+    output_path = os.path.join("public", "institutional_investors_exchange.csv")
+    df.to_csv(output_path, encoding="utf-8-sig")
