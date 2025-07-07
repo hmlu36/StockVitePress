@@ -5,7 +5,7 @@ from io import StringIO
 import re
 from bs4 import BeautifulSoup
 import ssl
-from utils import get_headers, get_dataframe_by_css_selector, init
+from utils import get_headers, get_dataframe_by_css_selector, init, fetch_url, post_url
 import os
 import json
 
@@ -18,9 +18,8 @@ def get_daily_exchange_report(filter):
     filter 過濾條件：本益比 小於 10 且 殖利率 大於 3。
     """
     url = "https://www.twse.com.tw/rwd/zh/afterTrading/BWIBBU_d?response=json"
-    headers = get_headers(url)
     # print(headers)
-    response = requests.get(url, headers=headers, verify=False)
+    response = fetch_url(url)
     data = response.json()["data"]
 
     columns = [
@@ -51,7 +50,7 @@ def get_daily_exchange_report(filter):
 def get_daily_exchange():
     """Fetch daily exchange data."""
     url = "https://www.twse.com.tw/rwd/zh/afterTrading/BFT41U?selectType=ALL&response=json"
-    data = requests.get(url).json()
+    data = fetch_url(url).json()
     df = pd.DataFrame(data["data"], columns=data["fields"])
     return df[["證券代號", "成交價"]]
 
@@ -62,7 +61,7 @@ def get_stock_capital(filter):
     filter 過濾條件：上市日期早於五年前。
     """
     url = "https://mopsfin.twse.com.tw/opendata/t187ap03_L.csv"
-    response = requests.get(url, verify=False)
+    response = fetch_url(url)
     response.encoding = "utf-8"
     df = pd.read_csv(StringIO(response.text))
 
@@ -188,62 +187,44 @@ def get_financial_statement(
         },
     }
 
-    # 第一步的請求網址
-    first_step_url = f"https://mops.twse.com.tw/mops/web/{ajax_code}"
+    # --- 第一步：發送 POST 請求，獲取動態 URL ---
+    first_step_url = "https://mops.twse.com.tw/mops/api/redirectToOld"
 
     # 發送 POST 請求以獲取加密參數
     headers = get_headers(first_step_url)
-    response_step1 = requests.post(
-        first_step_url, data=json.dumps(payload), headers=headers, timeout=10, verify=False
-    )
+    response_step1 = post_url(first_step_url, json=payload)
     response_step1.raise_for_status()
 
     # 解析回傳的 JSON，取得加密字串
-    encrypted_params = response_step1.json().get("data")
-    if not encrypted_params:
-        print("錯誤：無法從第一步請求中獲取加密參數。")
+    api_response = response_step1.json()
+    final_url = api_response.get("result", {}).get("url")
+    print(f"獲取的最終 URL: {final_url}")
+
+    # 發送 GET 請求
+    response_final = requests.get(final_url, headers=headers, timeout=30, verify=False)
+    response_final.raise_for_status()
+    response_final.encoding = "utf8"
+
+    if "查詢無資料" in response_final.text:
+        print(f"查詢無資料：民國 {year} 年第 {season} 季 {report_type}。")
         return pd.DataFrame()
 
-    # --- 第二步：使用加密參數獲取真實資料 ---
-    # 組合第二步的 GET 請求網址
-    final_url = f"https://mopsov.twse.com.tw/mops/web/ajax_{ajax_code}?parameters={encrypted_params}"
-
-    try:
-        # 發送 GET 請求
-        response_final = requests.get(final_url, headers=HEADERS, timeout=30)
-        response_final.raise_for_status()
-        response_final.encoding = "utf8"
-
-        if "查詢無資料" in response_final.text:
-            print(f"查詢無資料：民國 {year} 年第 {season} 季 {report_type}。")
-            return pd.DataFrame()
-
-        # 使用 pandas 讀取 HTML 表格
-        df_list = pd.read_html(StringIO(response_final.text))
-        if not df_list:
-            print("找不到任何表格。")
-            return pd.DataFrame()
-
-        # 資料清理 (與舊版相同)
-        df = df_list[0]
-        # 移除重複的標頭列，這在新版頁面中很常見
-        df = df[df.iloc[:, 0] != df.columns[0]]
-        df = df.rename(columns={"公司代號": "證券代號"})
-
-        for col in df.columns[2:]:
-            df[col] = pd.to_numeric(df[col], errors="coerce")
-
-        return df.reset_index(drop=True)
-
-    except requests.exceptions.RequestException as e:
-        print(f"第二步請求失敗: {e}")
+    # 使用 pandas 讀取 HTML 表格
+    df_list = pd.read_html(StringIO(response_final.text))
+    if not df_list:
+        print("找不到任何表格。")
         return pd.DataFrame()
-    except ValueError:
-        print("解析 HTML 表格失敗。")
-        return pd.DataFrame()
-    except Exception as e:
-        print(f"發生未知錯誤: {e}")
-        return pd.DataFrame()
+
+    # 資料清理 (與舊版相同)
+    df = df_list[0]
+    # 移除重複的標頭列，這在新版頁面中很常見
+    df = df[df.iloc[:, 0] != df.columns[0]]
+    df = df.rename(columns={"公司代號": "證券代號"})
+
+    for col in df.columns[2:]:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    return df.reset_index(drop=True)
 
 
 def get_latest_report_period(today: date = date.today()):
