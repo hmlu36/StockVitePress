@@ -9,10 +9,15 @@ init()
 
 def fetch_exchange_data(date):
     """Fetch exchange data for a specific date."""
-    url = f"https://www.twse.com.tw/exchangeReport/FMTQIK?response=json&date={date.strftime('%Y%m%d')}"
+    url = f"https://www.twse.com.tw/exchangeReport/FMTQIK?response=json"
     headers = get_headers(url)
+<<<<<<< HEAD
     # print(headers)
     response = requests.get(url, headers=headers, verify=False)
+=======
+    print(headers)
+    response = requests.get(url, headers=headers, verify=False, timeout=30)
+>>>>>>> d4718008ae93bace89e54cba003167dc32f47f30
     response.raise_for_status()  # Raise an exception for HTTP errors
     return response.json()
 
@@ -34,6 +39,7 @@ def get_daily_exchange_amount(day_count=1):
     while sum_df.shape[1] < day_count:
         temp_date = get_business_day(count)
         json_data = fetch_exchange_data(temp_date)
+        print(json_data)
         df = process_exchange_data(json_data)
 
         sum_df = pd.concat([sum_df, df], axis=1) if not sum_df.empty else df
@@ -49,8 +55,15 @@ def fetch_investors_data(date):
     """Fetch institutional investors data for a specific date."""
     url = f"https://www.twse.com.tw/fund/BFI82U?response=json&dayDate={date.strftime('%Y%m%d')}&type=day"
     headers = get_headers(url)
+<<<<<<< HEAD
     headers.update({"Referer": "https://www.twse.com.tw/"})
     response = requests.get(url, headers=headers, verify=False)
+=======
+    headers.update({
+        'Referer': 'https://www.twse.com.tw/'
+    })
+    response = requests.get(url, headers=headers, verify=False, timeout=30)
+>>>>>>> d4718008ae93bace89e54cba003167dc32f47f30
     response.raise_for_status()  # Raise an exception for HTTP errors
     return response.json()
 
