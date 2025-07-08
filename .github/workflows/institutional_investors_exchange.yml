@@ -30,7 +30,7 @@ jobs:
 
       - name: execute py script
         run: |
-          python python/step0_institution_iInvestors.py
+          python python/step0_institution_investors.py
             
       - name: Commit and Push changes
         run: |

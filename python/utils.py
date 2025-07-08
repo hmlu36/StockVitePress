@@ -152,13 +152,6 @@ def get_dataframe_by_css_selector(url, css_selector, wait_time=5):
     return pd.DataFrame()
 
 
-# Example usage
-url = "https://goodinfo.tw/tw/StockFinDetail.asp?RPT_CAT=IS_M_QUAR_ACC&STOCK_ID=8150"
-css_selector = "#txtFinBody"
-df = get_dataframe_by_css_selector(url, css_selector)
-print(df)
-
-
 def get_business_day(count=1):
     end_date = datetime.today()
     start_date = end_date - relativedelta(months=1)  # 假設從一個月前開始

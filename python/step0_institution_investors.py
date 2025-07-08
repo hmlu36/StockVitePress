@@ -11,13 +11,12 @@ def fetch_exchange_data(date):
     """Fetch exchange data for a specific date."""
     url = f"https://www.twse.com.tw/exchangeReport/FMTQIK?response=json"
     headers = get_headers(url)
-    print(headers)
     response = requests.get(url, headers=headers, verify=False, timeout=30)
+    print(response.text)
     response.raise_for_status()  # Raise an exception for HTTP errors
     # 新增：檢查回應內容型態與長度
     if 'application/json' not in response.headers.get('Content-Type', '') or not response.text.strip():
         print("[錯誤] 伺服器未回傳 JSON，實際回應如下：")
-        print(response.text)
         raise ValueError("伺服器未回傳 JSON 格式資料")
     try:
         return response.json()
