@@ -2,7 +2,7 @@ import pandas as pd
 import requests
 from datetime import datetime
 import os
-from utils import get_headers, sleep, get_business_day, init, fetch_url
+from utils import get_headers, sleep, get_business_day, init, fetch_data
 
 init()
 
@@ -10,15 +10,7 @@ init()
 def fetch_exchange_data(date):
     """Fetch exchange data for a specific date."""
     url = f"https://www.twse.com.tw/exchangeReport/FMTQIK?response=json&date={date.strftime('%Y%m%d')}"
-    response = fetch_url(url)
-    response.encoding = "utf-8"
-    # 詳細的除錯資訊
-    print(f"狀態碼: {response.status_code}")
-    print(f"回應標頭: {dict(response.headers)}")
-    print(f"回應長度: {len(response.text)}")
-    print(f"回應內容前 200 字元: {response.text[:200]}")
-
-    response.raise_for_status()
+    response = fetch_data(url)
 
     # 檢查回應是否為空
     if not response.text.strip():
@@ -56,7 +48,7 @@ def get_daily_exchange_amount(day_count=1):
     while sum_df.shape[1] < day_count:
         temp_date = get_business_day(count)
         json_data = fetch_exchange_data(temp_date)
-        print(json_data)
+        # print(json_data)
         df = process_exchange_data(json_data)
 
         sum_df = pd.concat([sum_df, df], axis=1) if not sum_df.empty else df

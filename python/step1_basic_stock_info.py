@@ -5,7 +5,7 @@ from io import StringIO
 import re
 from bs4 import BeautifulSoup
 import ssl
-from utils import get_headers, get_dataframe_by_css_selector, init, fetch_url, post_url
+from utils import get_headers, get_dataframe_by_css_selector, init, fetch_data, post_url
 import os
 import json
 
@@ -18,8 +18,7 @@ def get_daily_exchange_report(filter):
     filter 過濾條件：本益比 小於 10 且 殖利率 大於 3。
     """
     url = "https://www.twse.com.tw/rwd/zh/afterTrading/BWIBBU_d?response=json"
-    # print(headers)
-    response = fetch_url(url)
+    response = fetch_data(url)
     data = response.json()["data"]
 
     columns = [
@@ -50,7 +49,7 @@ def get_daily_exchange_report(filter):
 def get_daily_exchange():
     """Fetch daily exchange data."""
     url = "https://www.twse.com.tw/rwd/zh/afterTrading/BFT41U?selectType=ALL&response=json"
-    data = fetch_url(url).json()
+    data = fetch_data(url).json()
     df = pd.DataFrame(data["data"], columns=data["fields"])
     return df[["證券代號", "成交價"]]
 
@@ -61,7 +60,7 @@ def get_stock_capital(filter):
     filter 過濾條件：上市日期早於五年前。
     """
     url = "https://mopsfin.twse.com.tw/opendata/t187ap03_L.csv"
-    response = fetch_url(url)
+    response = fetch_data(url)
     response.encoding = "utf-8"
     df = pd.read_csv(StringIO(response.text))
 
@@ -198,10 +197,10 @@ def get_financial_statement(
     # 解析回傳的 JSON，取得加密字串
     api_response = response_step1.json()
     final_url = api_response.get("result", {}).get("url")
-    print(f"獲取的最終 URL: {final_url}")
+    print(f"final_url: {final_url}")
 
     # 發送 GET 請求
-    response_final = requests.get(final_url, headers=headers, timeout=30, verify=False)
+    response_final = fetch_data(final_url)
     response_final.raise_for_status()
     response_final.encoding = "utf8"
 

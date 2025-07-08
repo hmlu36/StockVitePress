@@ -29,6 +29,7 @@ def init():
 
 from requests.adapters import HTTPAdapter
 
+
 # --- 自訂 SSL Context 的輔助類別 ---
 class CustomHttpAdapter(HTTPAdapter):
     def __init__(self, ssl_context=None, **kwargs):
@@ -40,8 +41,9 @@ class CustomHttpAdapter(HTTPAdapter):
             num_pools=connections,
             maxsize=maxsize,
             block=block,
-            ssl_context=self.ssl_context
+            ssl_context=self.ssl_context,
         )
+
 
 def get_session_with_custom_ssl():
     """建立一個使用自訂 SSL 安全等級的 requests.Session"""
@@ -49,17 +51,19 @@ def get_session_with_custom_ssl():
     # 預設等級 2 非常嚴格，不允許缺少 SKI 的憑證
     ctx = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
     ctx.options |= 0x4  # OP_LEGACY_SERVER_CONNECT
-    ctx.set_ciphers('ALL:@SECLEVEL=1')
-    
+    ctx.set_ciphers("ALL:@SECLEVEL=1")
+
     session = requests.Session()
     adapter = CustomHttpAdapter(ssl_context=ctx)
-    session.mount('https://', adapter)
+    session.mount("https://", adapter)
     return session
 
 
-def fetch_url(url):
+def fetch_data(url):
     headers = get_headers(url)
-    return requests.get(url, headers=headers, timeout=30, verify=False)
+    response = requests.get(url, headers=headers, timeout=30, verify=False)
+    response.raise_for_status()
+    return response
 
 
 def post_url(url, data=None, json=None):
@@ -79,22 +83,13 @@ def ignore_ssl_warnings():
 
 
 def get_headers(url):
-    """Generate random user-agent headers."""
     ua = pyuser_agent.UA()
-    user_agent = ua.random
     parsed_url = urlparse(url)
-    referer = f"{parsed_url.scheme}://{parsed_url.netloc}"
-    headers = {
-        "User-Agent": user_agent,
-        "Referer": referer,
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "zh-TW,zh;q=0.9",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Connection": "keep-alive",
-        "Upgrade-Insecure-Requests": "1",
-        "Cache-Control": "max-age=0",
+
+    return {
+        "User-Agent": ua.random,
+        "Referer": f"{parsed_url.scheme}://{parsed_url.netloc}"
     }
-    return headers
 
 
 def sleep():
