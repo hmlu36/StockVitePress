@@ -2,7 +2,7 @@ import pandas as pd
 import requests
 from datetime import datetime
 import os
-from utils import get_headers, sleep, get_business_day, init
+from utils import get_headers, sleep, get_business_day, init, fetch_url
 
 init()
 
@@ -10,8 +10,7 @@ init()
 def fetch_exchange_data(date):
     """Fetch exchange data for a specific date."""
     url = f"https://www.twse.com.tw/exchangeReport/FMTQIK?response=json&date={date.strftime('%Y%m%d')}"
-    headers = get_headers(url)
-    response = requests.get(url, headers=headers)
+    response = fetch_url(url)
     response.encoding = "utf-8"
     print(response.text)
     response.raise_for_status()  # Raise an exception for HTTP errors
