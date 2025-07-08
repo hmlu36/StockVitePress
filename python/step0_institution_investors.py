@@ -16,7 +16,10 @@ def fetch_exchange_data(date):
     print(response.text)
     response.raise_for_status()  # Raise an exception for HTTP errors
     # 新增：檢查回應內容型態與長度
-    if 'application/json' not in response.headers.get('Content-Type', '') or not response.text.strip():
+    if (
+        "application/json" not in response.headers.get("Content-Type", "")
+        or not response.text.strip()
+    ):
         print("[錯誤] 伺服器未回傳 JSON，實際回應如下：")
         raise ValueError("伺服器未回傳 JSON 格式資料")
     try:
@@ -60,9 +63,7 @@ def fetch_investors_data(date):
     """Fetch institutional investors data for a specific date."""
     url = f"https://www.twse.com.tw/fund/BFI82U?response=json&dayDate={date.strftime('%Y%m%d')}&type=day"
     headers = get_headers(url)
-    headers.update({
-        'Referer': 'https://www.twse.com.tw/'
-    })
+    headers.update({"Referer": "https://www.twse.com.tw/"})
     response = requests.get(url, headers=headers, verify=False, timeout=30)
     response.raise_for_status()  # Raise an exception for HTTP errors
     return response.json()
