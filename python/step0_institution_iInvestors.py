@@ -14,7 +14,17 @@ def fetch_exchange_data(date):
     print(headers)
     response = requests.get(url, headers=headers, verify=False, timeout=30)
     response.raise_for_status()  # Raise an exception for HTTP errors
-    return response.json()
+    # 新增：檢查回應內容型態與長度
+    if 'application/json' not in response.headers.get('Content-Type', '') or not response.text.strip():
+        print("[錯誤] 伺服器未回傳 JSON，實際回應如下：")
+        print(response.text)
+        raise ValueError("伺服器未回傳 JSON 格式資料")
+    try:
+        return response.json()
+    except Exception as e:
+        print("[錯誤] 解析 JSON 失敗，回應內容如下：")
+        print(response.text)
+        raise e
 
 
 def process_exchange_data(json_data):
