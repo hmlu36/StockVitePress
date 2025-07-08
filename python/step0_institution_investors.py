@@ -12,22 +12,32 @@ def fetch_exchange_data(date):
     url = f"https://www.twse.com.tw/exchangeReport/FMTQIK?response=json&date={date.strftime('%Y%m%d')}"
     response = fetch_url(url)
     response.encoding = "utf-8"
-    print(response.text)
-    response.raise_for_status()  # Raise an exception for HTTP errors
-    # 新增：檢查回應內容型態與長度
-    if (
-        "application/json" not in response.headers.get("Content-Type", "")
-        or not response.text.strip()
-    ):
-        print("[錯誤] 伺服器未回傳 JSON，實際回應如下：")
-        raise ValueError("伺服器未回傳 JSON 格式資料")
+    # 詳細的除錯資訊
+    print(f"狀態碼: {response.status_code}")
+    print(f"回應標頭: {dict(response.headers)}")
+    print(f"回應長度: {len(response.text)}")
+    print(f"回應內容前 200 字元: {response.text[:200]}")
+
+    response.raise_for_status()
+
+    # 檢查回應是否為空
+    if not response.text.strip():
+        raise ValueError(f"伺服器回傳空內容，日期: {date}")
+
+    # 檢查是否為 HTML 錯誤頁面
+    if response.text.strip().startswith(
+        "<!DOCTYPE"
+    ) or response.text.strip().startswith("<html"):
+        print("收到 HTML 回應而非 JSON:")
+        print(response.text[:500])
+        raise ValueError("伺服器回傳 HTML 而非 JSON")
+
     try:
         return response.json()
     except Exception as e:
-        print("[錯誤] 解析 JSON 失敗，回應內容如下：")
-        print(response.text)
+        print(f"JSON 解析失敗: {str(e)}")
+        print(f"完整回應內容: {response.text}")
         raise e
-
 
 def process_exchange_data(json_data):
     """Process the JSON data into a DataFrame."""
