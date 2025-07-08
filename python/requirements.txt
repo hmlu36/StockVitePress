@@ -1,7 +1,6 @@
 pandas
 bs4
 numpy
-certifi
 requests
 lxml
 pyuser_agent
@@ -13,3 +12,4 @@ Opencv-python
 pytesseract
 webdriver-manager
 selenium
+brotli
