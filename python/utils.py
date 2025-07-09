@@ -18,59 +18,20 @@ from bs4 import BeautifulSoup
 from io import StringIO
 import urllib3
 import sys
-import ssl
-
+import logging
 
 def init():
     """Initialize the environment by setting UTF-8 encoding and ignoring SSL warnings."""
     set_utf8_encoding()
     ignore_ssl_warnings()
 
-
-from requests.adapters import HTTPAdapter
-
-
-# --- 自訂 SSL Context 的輔助類別 ---
-class CustomHttpAdapter(HTTPAdapter):
-    def __init__(self, ssl_context=None, **kwargs):
-        self.ssl_context = ssl_context
-        super().__init__(**kwargs)
-
-    def init_poolmanager(self, connections, maxsize, block=False):
-        self.poolmanager = requests.packages.urllib3.poolmanager.PoolManager(
-            num_pools=connections,
-            maxsize=maxsize,
-            block=block,
-            ssl_context=self.ssl_context,
-        )
-
-
-def get_session_with_custom_ssl():
-    """建立一個使用自訂 SSL 安全等級的 requests.Session"""
-    # 建立一個 SSL Context，並將安全等級設定為 1
-    # 預設等級 2 非常嚴格，不允許缺少 SKI 的憑證
-    ctx = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
-    ctx.options |= 0x4  # OP_LEGACY_SERVER_CONNECT
-    ctx.set_ciphers("ALL:@SECLEVEL=1")
-
-    session = requests.Session()
-    adapter = CustomHttpAdapter(ssl_context=ctx)
-    session.mount("https://", adapter)
-    return session
-
-
-def fetch_data(url):
-    headers = get_headers(url)
-    response = requests.get(url, headers=headers, timeout=30, verify=False)
-    response.raise_for_status()
-    return response
-
-
-def post_url(url, data=None, json=None):
-    headers = get_headers(url)
-    return requests.post(
-        url, headers=headers, data=data, json=json, timeout=30, verify=False
+def initLogging():
+    # 設定日誌
+    logging.basicConfig(
+        level=logging.INFO, 
+        format='%(asctime)s - %(levelname)s - %(message)s'
     )
+    logger = logging.getLogger(__name__)
 
 
 def set_utf8_encoding():
@@ -82,13 +43,29 @@ def ignore_ssl_warnings():
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
+
+def fetch_data(url):
+    headers = get_headers(url)
+    response = requests.get(url, headers=headers, timeout=30, verify=False)
+    response.raise_for_status()
+    return response
+
+
+def post_data(url, data=None, json=None):
+    headers = get_headers(url)
+    response = requests.post(
+        url, headers=headers, data=data, json=json, timeout=30, verify=False
+    )
+    response.raise_for_status()
+    return response
+
 def get_headers(url):
     ua = pyuser_agent.UA()
     parsed_url = urlparse(url)
 
     return {
         "User-Agent": ua.random,
-        "Referer": f"{parsed_url.scheme}://{parsed_url.netloc}"
+        "Referer": f"{parsed_url.scheme}://{parsed_url.netloc}",
     }
 
 
@@ -123,7 +100,7 @@ def get_dataframe_by_css_selector(url, css_selector, wait_time=5):
         return pd.DataFrame()
 
     response.encoding = "utf-8"
-    print(response.text)
+    # print(response.text)
     soup = BeautifulSoup(response.text, "html.parser")
 
     # 等待指定的時間以確保頁面加載完成
