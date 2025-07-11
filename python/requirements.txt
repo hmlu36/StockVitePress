@@ -12,4 +12,5 @@ Opencv-python
 pytesseract
 webdriver-manager
 selenium
-brotli
+dotenv
+line-bot-sdk
