@@ -18,61 +18,11 @@ from bs4 import BeautifulSoup
 from io import StringIO
 import urllib3
 import sys
-import logging
-
-# 全域變數，用於儲存 logger 物件
-logger = None
-
-def setup_logger():
-    """建立並設定日誌器"""
-    global logger
-    
-    if logger is not None:
-        return logger
-    
-    # 建立日誌目錄
-    log_dir = "logs"
-    os.makedirs(log_dir, exist_ok=True)
-    
-    # 取得目前日期時間作為檔名
-    current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_filename = f"{log_dir}/stock_{current_time}.log"
-    
-    # 設定日誌格式
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    
-    # 設定檔案處理器
-    file_handler = logging.FileHandler(log_filename, encoding='utf-8')
-    file_handler.setFormatter(formatter)
-    
-    # 設定控制台處理器
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setFormatter(formatter)
-    
-    # 建立並設定日誌器
-    logger = logging.getLogger('stock_app')
-    logger.setLevel(logging.INFO)
-    logger.addHandler(file_handler)
-    logger.addHandler(console_handler)
-    
-    return logger
-
-def get_logger():
-    """獲取日誌器物件"""
-    global logger
-    if logger is None:
-        logger = setup_logger()
-    return logger
-
 
 def init():
     """初始化函式，設定各種環境"""
     set_utf8_encoding()
     ignore_ssl_warnings()
-    
-    # 設定日誌
-    setup_logger()
-
 
 def set_utf8_encoding():
     sys.stdout.reconfigure(encoding="utf-8")

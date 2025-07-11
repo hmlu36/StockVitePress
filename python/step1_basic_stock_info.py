@@ -20,17 +20,6 @@ from utils import (
     post_data
 )
 
-import logging
-
-# 設定日誌
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
-
-logger = logging.getLogger(__name__)
-
-
 @dataclass
 class StockConfig:
     """集中管理所有配置參數"""
@@ -124,12 +113,12 @@ class StockDataFetcher:
     def get_daily_exchange_report(self, apply_filter: bool = False) -> pd.DataFrame:
         """獲取每日交易報告"""
         try:
-            logger.info("正在獲取每日交易報告...")
+            print("正在獲取每日交易報告...")
             response = fetch_data(self.config.TWSE_DAILY_REPORT_URL)
             data = response.json().get("data", [])
 
             if not data:
-                logger.warning("每日交易報告無資料")
+                print("每日交易報告無資料")
                 return pd.DataFrame()
 
             df = pd.DataFrame(data, columns=self.config.DAILY_REPORT_COLUMNS)
@@ -138,11 +127,11 @@ class StockDataFetcher:
             if apply_filter:
                 df = self._apply_exchange_filters(df)
 
-            logger.info(f"成功獲取 {len(df)} 筆每日交易資料")
+            print(f"成功獲取 {len(df)} 筆每日交易資料")
             return df
 
         except Exception as e:
-            logger.error(f"獲取每日交易報告失敗: {e}")
+            print(f"獲取每日交易報告失敗: {e}")
             return pd.DataFrame()
 
     def _apply_exchange_filters(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -164,7 +153,7 @@ class StockDataFetcher:
     def get_stock_capital(self, apply_filter: bool = False) -> pd.DataFrame:
         """獲取股本資料"""
         try:
-            logger.info("正在獲取股本資料...")
+            print("正在獲取股本資料...")
             response = fetch_data(self.config.MOPS_CAPITAL_URL)
             response.encoding = "utf-8"
             df = pd.read_csv(StringIO(response.text))
@@ -182,11 +171,11 @@ class StockDataFetcher:
                 if col in df.columns:
                     df[col] = pd.to_datetime(df[col], errors="coerce").dt.strftime("%Y/%m/%d")
 
-            logger.info(f"成功獲取 {len(df)} 筆股本資料")
+            print(f"成功獲取 {len(df)} 筆股本資料")
             return df
 
         except Exception as e:
-            logger.error(f"獲取股本資料失敗: {e}")
+            print(f"獲取股本資料失敗: {e}")
             return pd.DataFrame()
 
     def _apply_capital_filters(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -200,18 +189,18 @@ class StockDataFetcher:
     def get_daily_exchange(self) -> pd.DataFrame:
         """獲取盤後定價交易資料"""
         try:
-            logger.info("正在獲取盤後定價交易資料...")
+            print("正在獲取盤後定價交易資料...")
             response = fetch_data(self.config.TWSE_DAILY_EXCHANGE_URL)
             data = response.json()
 
             df = pd.DataFrame(data["data"], columns=data["fields"])
             result = df[["證券代號", "成交價"]]
 
-            logger.info(f"成功獲取 {len(result)} 筆盤後交易資料")
+            print(f"成功獲取 {len(result)} 筆盤後交易資料")
             return result
 
         except Exception as e:
-            logger.error(f"獲取盤後交易資料失敗: {e}")
+            print(f"獲取盤後交易資料失敗: {e}")
             return pd.DataFrame()
 
 
@@ -224,7 +213,7 @@ class FinancialReportProcessor:
     def get_operating_margin(self) -> pd.DataFrame:
         """獲取營業利益率資料"""
         try:
-            logger.info("正在獲取營業利益率資料...")
+            print("正在獲取營業利益率資料...")
             df = self.get_financial_statement("營益分析")
 
             if df.empty:
@@ -238,11 +227,11 @@ class FinancialReportProcessor:
             df["營業收入"] = (pd.to_numeric(df["營業收入"], errors='coerce') / 100).round(4)
             result = df.drop(columns=["公司名稱"])
 
-            logger.info(f"成功獲取 {len(result)} 筆營業利益率資料")
+            print(f"成功獲取 {len(result)} 筆營業利益率資料")
             return result
 
         except Exception as e:
-            logger.error(f"獲取營業利益率資料失敗: {e}")
+            print(f"獲取營業利益率資料失敗: {e}")
             return pd.DataFrame()
 
     def get_financial_statement(self, report_type: str = "綜合損益",
@@ -258,7 +247,7 @@ class FinancialReportProcessor:
 
             ajax_code = self.config.REPORT_TYPE_MAP.get(report_type)
             if not ajax_code:
-                logger.error(f"不支援的報表類型: {report_type}")
+                print(f"不支援的報表類型: {report_type}")
                 return pd.DataFrame()
 
             # 構建請求參數
@@ -282,20 +271,20 @@ class FinancialReportProcessor:
             final_url = api_response.get("result", {}).get("url")
 
             if not final_url:
-                logger.error("無法獲取財務報表 URL")
+                print("無法獲取財務報表 URL")
                 return pd.DataFrame()
 
             # 獲取最終資料
             final_response = fetch_data(final_url)
 
             if "查詢無資料" in final_response.text:
-                logger.warning(f"查詢無資料：民國 {year} 年第 {season} 季 {report_type}")
+                print(f"查詢無資料：民國 {year} 年第 {season} 季 {report_type}")
                 return pd.DataFrame()
 
             # 解析 HTML 表格
             df_list = pd.read_html(StringIO(final_response.text))
             if not df_list:
-                logger.warning("找不到任何表格")
+                print("找不到任何表格")
                 return pd.DataFrame()
 
             df = df_list[0]
@@ -309,7 +298,7 @@ class FinancialReportProcessor:
             return df.reset_index(drop=True)
 
         except Exception as e:
-            logger.error(f"獲取財務報表失敗: {e}")
+            print(f"獲取財務報表失敗: {e}")
             return pd.DataFrame()
 
     @staticmethod
@@ -350,7 +339,7 @@ class ShareholderDataProcessor:
     def get_director_shareholders(self) -> pd.DataFrame:
         """獲取董監持股資料"""
         try:
-            logger.info("正在獲取董監持股資料...")
+            print("正在獲取董監持股資料...")
             css_selector = "#details"
             df = get_dataframe_by_css_selector(
                 self.config.DIRECTOR_SHAREHOLDER_URL,
@@ -359,7 +348,7 @@ class ShareholderDataProcessor:
             )
 
             if df.empty:
-                logger.warning("董監持股資料為空")
+                print("董監持股資料為空")
                 return df
 
             df.columns = df.columns.get_level_values(0)
@@ -368,21 +357,21 @@ class ShareholderDataProcessor:
             df = df.rename(columns={"持股比率 %": "全體董監持股(%)"})
 
             result = df[["證券代號", "全體董監持股(%)"]]
-            logger.info(f"成功獲取 {len(result)} 筆董監持股資料")
+            print(f"成功獲取 {len(result)} 筆董監持股資料")
             return result
 
         except Exception as e:
-            logger.error(f"獲取董監持股資料失敗: {e}")
+            print(f"獲取董監持股資料失敗: {e}")
             return pd.DataFrame()
 
     def get_all_shareholder_distribution(self) -> pd.DataFrame:
         """獲取股東分布資料"""
         try:
-            logger.info("正在獲取股東分布資料...")
+            print("正在獲取股東分布資料...")
             df = pd.read_csv(self.config.TDCC_SHAREHOLDER_URL)
 
             if df.empty:
-                logger.warning("股東分布資料為空")
+                print("股東分布資料為空")
                 return df
 
             # 處理股東分布資料
@@ -452,11 +441,11 @@ class ShareholderDataProcessor:
             ]
 
             result = s[result_columns]
-            logger.info(f"成功獲取 {len(result)} 筆股東分布資料")
+            print(f"成功獲取 {len(result)} 筆股東分布資料")
             return result
 
         except Exception as e:
-            logger.error(f"獲取股東分布資料失敗: {e}")
+            print(f"獲取股東分布資料失敗: {e}")
             return pd.DataFrame()
 
 
@@ -474,14 +463,14 @@ class StockAnalyzer:
     def get_basic_stock_info(self) -> pd.DataFrame:
         """獲取基本股票資訊"""
         try:
-            logger.info("開始分析股票資料...")
+            print("開始分析股票資料...")
 
             # 獲取基礎資料
             exchange_report = self.fetcher.get_daily_exchange_report(self.apply_filter)
             capital = self.fetcher.get_stock_capital(self.apply_filter)
 
             if exchange_report.empty or capital.empty:
-                logger.warning("基礎資料獲取失敗")
+                print("基礎資料獲取失敗")
                 return pd.DataFrame()
 
             # 確保證券代號型別一致
@@ -490,7 +479,7 @@ class StockAnalyzer:
 
             # 合併基礎資料
             merged_df = pd.merge(capital, exchange_report, on="證券代號", how="inner")
-            logger.info(f"基礎資料合併完成，共 {len(merged_df)} 筆")
+            print(f"基礎資料合併完成，共 {len(merged_df)} 筆")
 
             # 如果需要篩選，則加入額外資料
             if self.apply_filter:
@@ -504,11 +493,11 @@ class StockAnalyzer:
                 ]
                 merged_df = merged_df[cols]
 
-            logger.info(f"分析完成，最終資料筆數: {len(merged_df)}")
+            print(f"分析完成，最終資料筆數: {len(merged_df)}")
             return merged_df
 
         except Exception as e:
-            logger.error(f"獲取基本股票資訊時發生錯誤: {e}")
+            print(f"獲取基本股票資訊時發生錯誤: {e}")
             return pd.DataFrame()
 
     def _add_additional_data(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -525,18 +514,18 @@ class StockAnalyzer:
 
         for name, fetch_func in additional_sources:
             try:
-                logger.info(f"正在處理: {name}")
+                print(f"正在處理: {name}")
                 additional_df = fetch_func()
 
                 if not additional_df.empty:
                     additional_df = self.data_processor.ensure_string_type(additional_df, "證券代號")
                     result = pd.merge(result, additional_df, on="證券代號", how="left")
-                    logger.info(f"{name} 資料合併完成")
+                    print(f"{name} 資料合併完成")
                 else:
-                    logger.warning(f"{name} 無可用資料")
+                    print(f"{name} 無可用資料")
 
             except Exception as e:
-                logger.error(f"處理 {name} 時發生錯誤: {e}")
+                print(f"處理 {name} 時發生錯誤: {e}")
 
         return result
 
@@ -548,11 +537,11 @@ class StockAnalyzer:
             output_path = output_dir / filename
 
             df.to_csv(output_path, encoding="utf-8-sig", index=False)
-            logger.info(f"資料已成功輸出至: {output_path}")
-            logger.info(f"共處理 {len(df)} 筆資料")
+            print(f"資料已成功輸出至: {output_path}")
+            print(f"共處理 {len(df)} 筆資料")
 
         except Exception as e:
-            logger.error(f"儲存檔案失敗: {e}")
+            print(f"儲存檔案失敗: {e}")
 
 
 def main():
@@ -579,7 +568,7 @@ def main():
             print("查無符合條件的資料")
 
     except Exception as e:
-        logger.error(f"程式執行失敗: {e}")
+        print(f"程式執行失敗: {e}")
         print(f"程式執行失敗: {e}")
 
 
