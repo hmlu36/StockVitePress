@@ -3,18 +3,14 @@ import requests
 from datetime import datetime
 from pathlib import Path
 from utils import (
-    get_headers,
     sleep,
     get_business_day,
     init,
     fetch_data,
     format_number,
-    get_logger,
     format_date_to_chinese,
     convert_to_billion
 )
-
-logger = get_logger()
 
 
 def fetch_exchange_data(date):
@@ -336,10 +332,10 @@ def main():
     df, market_info = get_institutional_investors_exchange(1)
 
     if not df.empty:
-        logger.info("\n三大法人:")
-        logger.info(df)
-        logger.info("\n市場資訊:")
-        logger.info(market_info)
+        print("\n三大法人:")
+        print(df)
+        print("\n市場資訊:")
+        print(market_info)
         Path("public").mkdir(exist_ok=True)
 
         # 建立空白分隔列
@@ -364,16 +360,16 @@ def main():
 
         combined_df.to_csv("public/institutional_investors_exchange.csv", index=False, encoding="utf-8-sig")
 
-        logger.info("資料已儲存至 public/institutional_investors_exchange.csv")
+        print("資料已儲存至 public/institutional_investors_exchange.csv")
     else:
-        logger.error("無法獲取資料")
+        print("無法獲取資料")
 
     # 發送 LINE 通知
     response_code = send_line_notify(df, market_info)
     if response_code == 200:
-        logger.info("LINE 通知已成功發送")
+        print("LINE 通知已成功發送")
     else:
-        logger.error(f"LINE 通知發送失敗，錯誤碼: {response_code}")
+        print(f"LINE 通知發送失敗，錯誤碼: {response_code}")
 
 
 if __name__ == "__main__":
