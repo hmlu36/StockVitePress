@@ -181,7 +181,7 @@ def create_flex_message(df, market_info):
                 "weight": "bold",
                 "size": "sm" if i > 0 else "md",
                 "align": "end" if i > 0 else "start",
-                "flex": 3
+                "flex": 3 if i > 0 else 4
             }
             for i, col in enumerate(df.columns)
         ],
@@ -241,7 +241,7 @@ def create_flex_message(df, market_info):
                     "type": "text",
                     "text": f"{item_name}",
                     "size": "md",
-                    "flex": 3
+                    "flex": 4
                 },
                 {
                     "type": "text",
@@ -353,9 +353,9 @@ def main():
 
         # 合併所有資料
         combined_df = pd.concat([
-            df,                    # 三大法人資料
-            empty_row,            # 空白分隔列
-            market_info_formatted  # 市場資訊
+            df,                     # 三大法人資料
+            empty_row,              # 空白分隔列
+            market_info_formatted   # 市場資訊
         ], ignore_index=True)
 
         combined_df.to_csv("public/institutional_investors_exchange.csv", index=False, encoding="utf-8-sig")

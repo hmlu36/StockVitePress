@@ -20,6 +20,7 @@ from utils import (
     post_data
 )
 
+
 @dataclass
 class StockConfig:
     """集中管理所有配置參數"""
@@ -28,7 +29,7 @@ class StockConfig:
     TWSE_DAILY_EXCHANGE_URL: str = "https://www.twse.com.tw/rwd/zh/afterTrading/BFT41U?selectType=ALL&response=json"
     MOPS_CAPITAL_URL: str = "https://mopsfin.twse.com.tw/opendata/t187ap03_L.csv"
     MOPS_API_URL: str = "https://mops.twse.com.tw/mops/api/redirectToOld"
-    TDCC_SHAREHOLDER_URL: str = "https://smart.tdcc.com.tw/opendata/getOD.ashx?id=1-5"
+    TDCC_SHAREHOLDER_URL: str = "https://opendata.tdcc.com.tw/getOD.ashx?id=1-5"
     DIRECTOR_SHAREHOLDER_URL: str = "https://norway.twsthr.info/StockBoardTop.aspx"
 
     # 篩選條件:
@@ -131,6 +132,7 @@ class StockDataFetcher:
             return df
 
         except Exception as e:
+            print(self.config.TWSE_DAILY_REPORT_URL)
             print(f"獲取每日交易報告失敗: {e}")
             return pd.DataFrame()
 
@@ -351,16 +353,39 @@ class ShareholderDataProcessor:
                 print("董監持股資料為空")
                 return df
 
-            df.columns = df.columns.get_level_values(0)
-            df = df.iloc[:, [3][7]]
-            df["證券代號"] = df["個股代號/名稱"].str[0:4]
-            df = df.rename(columns={"持股比率 %": "全體董監持股(%)"})
+            # 處理欄位名稱
 
-            result = df[["證券代號", "全體董監持股(%)"]]
-            print(f"成功獲取 {len(result)} 筆董監持股資料")
-            return result
+            # 處理多層次欄位名稱 - 合併兩層 level 為一個欄位名稱
+            if isinstance(df.columns, pd.MultiIndex):
+                # 將 MultiIndex 的兩層合併成單一層
+                new_columns = []
+                for col in df.columns:
+                    # 排除空白或重複的 level 名稱
+                    if col[0] == col[1] or 'Unnamed' in col[0] or 'Unnamed' in col[1]:
+                        new_columns.append(col[0] if 'Unnamed' not in col[0] else col[1])
+                    else:
+                        # 合併兩個 level 的名稱
+                        new_columns.append(f"{col[0]}_{col[1]}")
+
+                df.columns = new_columns
+
+            # print(f"欄位內容: {df.columns.tolist()}")
+            # 選取需要的欄位：個股代號/名稱 和 本月持股比率
+            df = df[["個股代號/名稱", "類別", "持股比率 %_前二月", "持股比率 %_前一月", "持股比率 %_本 月"]].rename(
+                    columns={"個股代號/名稱": "證券代號",
+                            "持股比率 %_前二月": "前二月董監持股%",
+                            "持股比率 %_前一月": "前一月董監持股%",
+                            "持股比率 %_本 月": "本月董監持股%"}
+                )
+
+            # 確保主要資料框架的證券代號只有前四碼
+            df["證券代號"] = df["證券代號"].str[:4]
+
+            print(f"成功獲取 {len(df)} 筆董監持股資料")
+            return df
 
         except Exception as e:
+            print(self.config.DIRECTOR_SHAREHOLDER_URL)
             print(f"獲取董監持股資料失敗: {e}")
             return pd.DataFrame()
 
@@ -370,84 +395,74 @@ class ShareholderDataProcessor:
             print("正在獲取股東分布資料...")
             df = pd.read_csv(self.config.TDCC_SHAREHOLDER_URL)
 
+            # 去掉證券代號欄位中的空白
+            df["證券代號"] = df["證券代號"].str.strip()
+
             if df.empty:
                 print("股東分布資料為空")
                 return df
 
             # 處理股東分布資料
             df["key2"] = df.groupby("證券代號").cumcount() + 1
-            s = (
-                df.set_index(["資料日期", "證券代號", "key2"])
-                .unstack()
-                .sort_index(level=1, axis=1)
-            )
-            s.columns = s.columns.map("{0[0]}_{0[1]}".format)
-            s = s.rename_axis([None], axis=1).reset_index()
+            s = df.set_index(["資料日期", "證券代號", "key2"]).unstack()
+        
+            # 合併多層索引欄位名稱
+            s.columns = [f"{col[0]}_{col[1]}" for col in s.columns]
+            s = s.reset_index()
 
-            # 定義持股分級
-            retail_headers = [
-                "1-999", "1,000-5,000", "5,001-10,000", "10,001-15,000",
-                "15,001-20,000", "20,001-30,000", "30,001-40,000",
-                "40,001-50,000", "50,001-100,000"
-            ]
-
-            distribution_range_headers = retail_headers + [
-                "100,001-200,000", "200,001-400,000", "400,001-600,000",
-                "600,001-800,000", "800,001-1,000,000", "1,000,001",
-                "差異數調整", "合計"
-            ]
-
-            new_title = ["資料日期", "證券代號"] + [
-                distribution + title
-                for distribution in distribution_range_headers
-                for title in ["人數", "比例", "持股分級", "股數"]
-            ]
-            s.columns = new_title
+            
+            # 定義持股級別與對應
+            holding_levels = {
+                # 小股東 (100張以下)
+                "小股東": ["1-999", "1,000-5,000", "5,001-10,000", "10,001-15,000",
+                        "15,001-20,000", "20,001-30,000", "30,001-40,000",
+                        "40,001-50,000", "50,001-100,000"],
+                # 中小股東
+                "101-200張": ["100,001-200,000"],
+                "201-400張": ["200,001-400,000"],
+                "401-800張": ["400,001-600,000", "600,001-800,000"],
+                "801-1000張": ["800,001-1,000,000"],
+                # 大股東
+                "1000張以上": ["1,000,001"]
+            }
 
             # 計算各級別統計
-            s["100張以下比例"] = s[
-                [retail_header + "比例" for retail_header in retail_headers]
-            ].sum(axis=1)
-            s["100張以下人數"] = s[
-                [retail_header + "人數" for retail_header in retail_headers]
-            ].sum(axis=1)
+            result = pd.DataFrame({"證券代號": s["證券代號"]})
 
-            # 重新命名欄位
-            rename_map = {
-                "100,001-200,000比例": "101-200張比例",
-                "100,001-200,000人數": "101-200張人數",
-                "200,001-400,000比例": "201-400張比例",
-                "200,001-400,000人數": "201-400張人數",
-                "400,001-600,000比例": "401-600張比例",
-                "400,001-600,000人數": "401-600張人數",
-                "600,001-800,000比例": "601-800張比例",
-                "600,001-800,000人數": "601-800張人數",
-                "800,001-1,000,000比例": "801-1000張比例",
-                "800,001-1,000,000人數": "801-1000張人數",
-                "1,000,001比例": "1000張以上比例",
-                "1,000,001人數": "1000張以上人數",
-            }
-            s = s.rename(columns=rename_map)
+            # 處理每個持股級別
+            for new_label, old_labels in holding_levels.items():
+                # 計算人數
+                people_cols = [f"{label}人數" for label in old_labels]
+                if all(col in s.columns for col in people_cols):
+                    result[f"{new_label}人數"] = s[people_cols].sum(axis=1)
+                
+                # 計算比例並限制為小數點後兩位
+                ratio_cols = [f"{label}比例" for label in old_labels]
+                if all(col in s.columns for col in ratio_cols):
+                    result[f"{new_label}比例"] = s[ratio_cols].sum(axis=1).round(2)
 
-            # 合併401-800張
-            s["401-800張人數"] = s[["401-600張人數", "601-800張人數"]].sum(axis=1)
-            s["401-800張比例"] = s[["401-600張比例", "601-800張比例"]].sum(axis=1)
-
+            # 選擇最終需要的欄位
             result_columns = [
-                "證券代號", "100張以下人數", "100張以下比例",
+                "證券代號", "小股東人數", "小股東比例",
                 "101-200張人數", "101-200張比例", "201-400張人數", "201-400張比例",
                 "401-800張人數", "401-800張比例", "801-1000張人數", "801-1000張比例",
                 "1000張以上人數", "1000張以上比例"
             ]
 
-            result = s[result_columns]
-            print(f"成功獲取 {len(result)} 筆股東分布資料")
-            return result
+            # 確保所有欄位都存在
+            for col in result_columns:
+                if col not in result.columns:
+                    result[col] = None
+
+            final_result = result[result_columns]
+            print(f"成功獲取 {len(final_result)} 筆股東分布資料")
+            return final_result
 
         except Exception as e:
             print(f"獲取股東分布資料失敗: {e}")
+            import traceback
+            print(traceback.format_exc())
             return pd.DataFrame()
-
 
 class StockAnalyzer:
     """股票分析主控制器"""
@@ -569,12 +584,13 @@ def main():
 
     except Exception as e:
         print(f"程式執行失敗: {e}")
-        print(f"程式執行失敗: {e}")
 
 
 if __name__ == "__main__":
-    # main()
+    main()
 
-    config = StockConfig()
-    processor = ShareholderDataProcessor(config)
-    df = processor.get_director_shareholders()
+    # config = StockConfig()
+    # processor = ShareholderDataProcessor(config)
+    # df = processor.get_director_shareholders()
+
+    # df = processor.get_all_shareholder_distribution()
