@@ -17,7 +17,8 @@ from utils import (
     get_dataframe_by_css_selector,
     init,
     fetch_data,
-    post_data
+    post_data,
+    convert_to_billion
 )
 
 
@@ -31,6 +32,7 @@ class StockConfig:
     MOPS_API_URL: str = "https://mops.twse.com.tw/mops/api/redirectToOld"
     TDCC_SHAREHOLDER_URL: str = "https://opendata.tdcc.com.tw/getOD.ashx?id=1-5"
     DIRECTOR_SHAREHOLDER_URL: str = "https://norway.twsthr.info/StockBoardTop.aspx"
+    ROE_URL: str = "https://stock.wespai.com/p/10291"
 
     # 篩選條件:
     PE_RATIO_THRESHOLD: float = 10.0        # 本益比上限
@@ -164,7 +166,7 @@ class StockDataFetcher:
                 df = self._apply_capital_filters(df)
 
             # 處理資本額（轉換為億元）
-            df["實收資本額"] = pd.to_numeric(df["實收資本額"], errors='coerce') / 100000000
+            df["實收資本額"] = df["實收資本額"].apply(lambda x: convert_to_billion(x))
 
             result_columns = ["公司代號", "公司名稱", "實收資本額", "成立日期", "上市日期"]
             df = df[result_columns].rename(columns=self.config.COLUMN_RENAME_MAP)
@@ -409,7 +411,6 @@ class ShareholderDataProcessor:
             # 合併多層索引欄位名稱
             s.columns = [f"{col[0]}_{col[1]}" for col in s.columns]
             s = s.reset_index()
-
             
             # 定義持股級別與對應
             holding_levels = {
@@ -426,6 +427,9 @@ class ShareholderDataProcessor:
                 "1000張以上": ["1,000,001"]
             }
 
+            # 印出s的欄位，以便確認有哪些欄位
+            print(f"可用的欄位: {s.columns.tolist()}")
+            
             # 計算各級別統計
             result = pd.DataFrame({"證券代號": s["證券代號"]})
 
@@ -508,6 +512,7 @@ class StockAnalyzer:
                 ]
                 merged_df = merged_df[cols]
 
+
             print(f"分析完成，最終資料筆數: {len(merged_df)}")
             return merged_df
 
@@ -587,10 +592,10 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # main()
 
-    # config = StockConfig()
-    # processor = ShareholderDataProcessor(config)
+    config = StockConfig()
+    processor = ShareholderDataProcessor(config)
     # df = processor.get_director_shareholders()
 
-    # df = processor.get_all_shareholder_distribution()
+    df = processor.get_all_shareholder_distribution()

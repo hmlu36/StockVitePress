@@ -72,7 +72,7 @@ def process_investors_data(json_data, amount_df, date_str):
 
     # 處理三個欄位並轉為億元單位
     columns_to_convert = ["買進金額", "賣出金額", "買賣差額"]
-    df[columns_to_convert] = df[columns_to_convert].applymap(lambda x: convert_to_billion(x)).round(2)
+    df[columns_to_convert] = df[columns_to_convert].applymap(lambda x: convert_to_billion(x))
 
     # 替換外資及陸資名稱，移除「(不含外資自營商)」部分
     df.loc[df["單位名稱"] == "外資及陸資(不含外資自營商)", "單位名稱"] = "外資及陸資"
@@ -94,8 +94,8 @@ def process_investors_data(json_data, amount_df, date_str):
     # 新增市場總額與法人比重
     market_info = pd.DataFrame([
         {
-            "市場交易金額": f"{(convert_to_billion(market_total)):.2f}",
-            "法人成交": f"{(convert_to_billion(institutional_total)):.2f} ({inst_ratio}%)",
+            "交易總額": f"{(convert_to_billion(market_total)):.2f}",
+            "法人": f"{(convert_to_billion(institutional_total)):.2f} ({inst_ratio}%)",
         }
     ])
     return result, market_info
@@ -181,7 +181,7 @@ def create_flex_message(df, market_info):
                 "weight": "bold",
                 "size": "sm" if i > 0 else "md",
                 "align": "end" if i > 0 else "start",
-                "flex": 3 if i > 0 else 4
+                "flex": 3 if i > 0 else 6
             }
             for i, col in enumerate(df.columns)
         ],
@@ -241,7 +241,7 @@ def create_flex_message(df, market_info):
                     "type": "text",
                     "text": f"{item_name}",
                     "size": "md",
-                    "flex": 4
+                    "flex": 6
                 },
                 {
                     "type": "text",
@@ -345,8 +345,8 @@ def main():
         market_info_formatted = pd.DataFrame([
             {
                 "項目": "市場交易資訊",
-                df.columns[1]: f"{market_info.iloc[0]['市場交易金額']} 億元",
-                df.columns[2]: f"{market_info.iloc[0]['法人成交']}",
+                df.columns[1]: f"{market_info.iloc[0]['交易總額']} 億元",
+                df.columns[2]: f"{market_info.iloc[0]['法人']}",
                 df.columns[3]: ""
             }
         ])
