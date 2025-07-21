@@ -3,7 +3,6 @@
 整合多個資料來源，提供股票基本資訊分析功能
 """
 
-import logging
 import pandas as pd
 from datetime import datetime, timedelta, date
 from io import StringIO
@@ -104,6 +103,16 @@ class DataProcessor:
                     result = result[condition(result[column])]
 
         return result
+
+    @staticmethod
+    def filter_stock_code(df: pd.DataFrame, column: str = "證券代號") -> pd.DataFrame:
+        """篩選出符合條件（四碼數字）的證券代號"""
+        if column in df.columns:
+            # 先去除空白
+            df[column] = df[column].str.strip()
+            # 篩選四碼數字的證券代號
+            df = df[df[column].str.match(r'^\d{4}$')]
+        return df
 
 
 class StockDataFetcher:
@@ -374,11 +383,11 @@ class ShareholderDataProcessor:
             # print(f"欄位內容: {df.columns.tolist()}")
             # 選取需要的欄位：個股代號/名稱 和 本月持股比率
             df = df[["個股代號/名稱", "類別", "持股比率 %_前二月", "持股比率 %_前一月", "持股比率 %_本 月"]].rename(
-                    columns={"個股代號/名稱": "證券代號",
-                            "持股比率 %_前二月": "前二月董監持股%",
-                            "持股比率 %_前一月": "前一月董監持股%",
-                            "持股比率 %_本 月": "本月董監持股%"}
-                )
+                columns={"個股代號/名稱": "證券代號",
+                         "持股比率 %_前二月": "前二月董監持股%",
+                         "持股比率 %_前一月": "前一月董監持股%",
+                         "持股比率 %_本 月": "本月董監持股%"}
+            )
 
             # 確保主要資料框架的證券代號只有前四碼
             df["證券代號"] = df["證券代號"].str[:4]
@@ -397,8 +406,10 @@ class ShareholderDataProcessor:
             print("正在獲取股東分布資料...")
             df = pd.read_csv(self.config.TDCC_SHAREHOLDER_URL)
 
-            # 去掉證券代號欄位中的空白
-            df["證券代號"] = df["證券代號"].str.strip()
+            # 篩選四碼數字證券代號
+            df = DataProcessor.filter_stock_code(df)
+
+            print(f"篩選後保留 {len(df)} 筆四碼數字證券代號的資料")
 
             if df.empty:
                 print("股東分布資料為空")
@@ -407,11 +418,11 @@ class ShareholderDataProcessor:
             # 處理股東分布資料
             df["key2"] = df.groupby("證券代號").cumcount() + 1
             s = df.set_index(["資料日期", "證券代號", "key2"]).unstack()
-        
+
             # 合併多層索引欄位名稱
             s.columns = [f"{col[0]}_{col[1]}" for col in s.columns]
             s = s.reset_index()
-            
+
             # 定義持股級別與對應
             holding_levels = {
                 # 小股東 (100張以下)
@@ -429,21 +440,45 @@ class ShareholderDataProcessor:
 
             # 印出s的欄位，以便確認有哪些欄位
             print(f"可用的欄位: {s.columns.tolist()}")
-            
+
             # 計算各級別統計
             result = pd.DataFrame({"證券代號": s["證券代號"]})
 
             # 處理每個持股級別
             for new_label, old_labels in holding_levels.items():
-                # 計算人數
-                people_cols = [f"{label}人數" for label in old_labels]
-                if all(col in s.columns for col in people_cols):
+                # 計算人數 - 修改尋找欄位的方式
+                people_found = False
+                people_cols = []
+
+                # 尋找符合的欄位名稱（更彈性的匹配方式）
+                for label in old_labels:
+                    matching_cols = [col for col in s.columns if label in col and '人數' in col]
+                    if matching_cols:
+                        people_cols.extend(matching_cols)
+                        people_found = True
+
+                if people_found:
                     result[f"{new_label}人數"] = s[people_cols].sum(axis=1)
-                
-                # 計算比例並限制為小數點後兩位
-                ratio_cols = [f"{label}比例" for label in old_labels]
-                if all(col in s.columns for col in ratio_cols):
+                else:
+                    print(f"警告: 找不到 {new_label} 的人數欄位")
+                    result[f"{new_label}人數"] = 0
+
+                # 計算比例並限制為小數點後兩位 - 同樣修改尋找欄位的方式
+                ratio_found = False
+                ratio_cols = []
+
+                # 尋找符合的欄位名稱
+                for label in old_labels:
+                    matching_cols = [col for col in s.columns if label in col and '比例' in col]
+                    if matching_cols:
+                        ratio_cols.extend(matching_cols)
+                        ratio_found = True
+
+                if ratio_found:
                     result[f"{new_label}比例"] = s[ratio_cols].sum(axis=1).round(2)
+                else:
+                    print(f"警告: 找不到 {new_label} 的比例欄位")
+                    result[f"{new_label}比例"] = 0
 
             # 選擇最終需要的欄位
             result_columns = [
@@ -467,6 +502,7 @@ class ShareholderDataProcessor:
             import traceback
             print(traceback.format_exc())
             return pd.DataFrame()
+
 
 class StockAnalyzer:
     """股票分析主控制器"""
@@ -511,7 +547,6 @@ class StockAnalyzer:
                     if col not in ["證券代號", "證券名稱"]
                 ]
                 merged_df = merged_df[cols]
-
 
             print(f"分析完成，最終資料筆數: {len(merged_df)}")
             return merged_df
@@ -599,3 +634,4 @@ if __name__ == "__main__":
     # df = processor.get_director_shareholders()
 
     df = processor.get_all_shareholder_distribution()
+    print(df)

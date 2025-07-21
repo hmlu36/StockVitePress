@@ -10,7 +10,6 @@ IPython
 pytesseract
 Opencv-python
 pytesseract
-webdriver-manager
-selenium
 dotenv
 line-bot-sdk
+playwright  

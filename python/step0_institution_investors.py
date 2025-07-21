@@ -1,5 +1,4 @@
 import pandas as pd
-import requests
 from datetime import datetime
 from pathlib import Path
 from utils import (
