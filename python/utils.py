@@ -9,10 +9,7 @@ from bs4 import BeautifulSoup
 from io import StringIO
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.options import Options
+from playwright.sync_api import sync_playwright
 import pandas as pd
 from bs4 import BeautifulSoup
 from io import StringIO
@@ -96,69 +93,80 @@ def get_dataframe_by_css_selector(url, css_selector, wait_time=5):
 
     try:
         dfs = pd.read_html(StringIO(data.prettify()))
-        
+
         for df in dfs:
             if len(df) > 1:
                 return df
     except Exception as e:
-        print(f"一般方法取得資料失敗: {e}，將使用 Selenium 嘗試...")
+        print(f"一般方法取得資料失敗: {e}，將使用 Playwright 嘗試...")
 
+    # 使用 Playwright 方式抓取
+    print(f"使用 Playwright 抓取資料: {url}")
 
-    # 使用 Selenium 方式抓取
-    print(f"使用 Selenium 抓取資料: {url}")
-    try:
-        # 設定 Chrome 選項
-        chrome_options = Options()
-        chrome_options.add_argument("--headless")  # 無頭模式
-        chrome_options.add_argument("--no-sandbox")
-        chrome_options.add_argument("--disable-dev-shm-usage")
-
-        # 建立 WebDriver
-        service = Service()
-        driver = webdriver.Chrome(service=service, options=chrome_options)
-
-        # 存取網頁
-        driver.get(url)
-
-        # 等待指定的時間以確保頁面載入完成
-        print(f"等待頁面載入 {wait_time} 秒...")
-        time.sleep(wait_time)
-
-        # 檢查頁面是否仍在初始化
-        if "初始化中" in driver.page_source:
-            # 如果還在初始化，再多等待一段時間
-            print("頁面仍在初始化中，增加等待時間...")
-            time.sleep(10)
-
-        # 使用 CSS 選擇器查找元素
+    with sync_playwright() as playwright:
         try:
-            element = driver.find_element(By.CSS_SELECTOR, css_selector)
-            html_content = element.get_attribute("outerHTML")
+            # 設定瀏覽器選項
+            browser = playwright.chromium.launch(headless=True)
+            context = browser.new_context(
+                viewport={"width": 1920, "height": 1080},
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+            )
+            page = context.new_page()
+
+            # 存取網頁
+            page.goto(url)
+
+            # 等待指定的時間以確保頁面載入完成
+            print(f"等待頁面載入 {wait_time} 秒...")
+            page.wait_for_timeout(wait_time * 1000)  # 毫秒為單位
+
+            # 檢查頁面是否仍在初始化
+            content = page.content()
+            if "初始化中" in content:
+                # 如果還在初始化，再多等待一段時間
+                print("頁面仍在初始化中，增加等待時間...")
+                page.wait_for_timeout(10000)  # 多等待 10 秒
+
+            # 使用 CSS 選擇器查找元素
+            try:
+                # 等待元素出現
+                element = page.wait_for_selector(css_selector, timeout=30000)
+                if not element:
+                    print(f"在 Playwright 中找不到元素: {css_selector}")
+                    browser.close()
+                    return pd.DataFrame()
+
+                # 獲取元素的 HTML
+                html_content = element.inner_html()
+
+                # 解析 HTML 內容
+                try:
+                    soup = BeautifulSoup(f"<table>{html_content}</table>", "html.parser")
+                    dfs = pd.read_html(StringIO(soup.prettify()))
+
+                    browser.close()
+
+                    for df in dfs:
+                        if len(df) > 1:
+                            return df
+                    return pd.DataFrame()
+                except Exception as e:
+                    print(f"解析 Playwright 獲取的 HTML 時發生錯誤: {e}")
+                    browser.close()
+                    return pd.DataFrame()
+
+            except Exception as e:
+                print(f"在 Playwright 中處理元素時發生錯誤: {e}")
+                browser.close()
+                return pd.DataFrame()
+
         except Exception as e:
-            print(f"在 Selenium 中找不到元素: {e}")
-            driver.quit()
+            print(f"Playwright 抓取過程中發生錯誤: {e}")
+            try:
+                browser.close()
+            except:
+                pass
             return pd.DataFrame()
-
-        # 解析 HTML 內容
-        try:
-            dfs = pd.read_html(StringIO(html_content))
-            driver.quit()
-            for df in dfs:
-                if len(df) > 1:
-                    return df
-            return pd.DataFrame()
-        except ValueError as e:
-            print(f"解析 Selenium 獲取的 HTML 時發生錯誤: {e}")
-            driver.quit()
-            return pd.DataFrame()
-
-    except Exception as e:
-        print(f"Selenium 抓取過程中發生錯誤: {e}")
-        try:
-            driver.quit()
-        except:
-            pass
-        return pd.DataFrame()
 
 
 def get_business_day(count=1):
