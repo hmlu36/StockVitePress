@@ -15,6 +15,7 @@ from bs4 import BeautifulSoup
 from io import StringIO
 import urllib3
 import sys
+from pathlib import Path
 
 
 def init():
@@ -81,44 +82,19 @@ def get_dataframe_by_css_selector(url, css_selector, wait_time=5):
     pd.DataFrame: The parsed data as a DataFrame.
     """
 
-    response = fetch_data(url)
-    # print(response.text)
-
-    soup = BeautifulSoup(response.text, "html.parser")
-
-    # 等待指定的時間以確保頁面加載完成
-    time.sleep(wait_time)
-
-    data = soup.select_one(css_selector)
-
-    try:
-        dfs = pd.read_html(StringIO(data.prettify()))
-
-        for df in dfs:
-            if len(df) > 1:
-                return df
-    except Exception as e:
-        print(f"一般方法取得資料失敗: {e}，將使用 Playwright 嘗試...")
-
-    # 使用 Playwright 方式抓取
-    print(f"使用 Playwright 抓取資料: {url}")
-
     with sync_playwright() as playwright:
         try:
             # 設定瀏覽器選項
             browser = playwright.chromium.launch(headless=True)
+            ua = pyuser_agent.UA()
             context = browser.new_context(
                 viewport={"width": 1920, "height": 1080},
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+                user_agent=ua.random
             )
             page = context.new_page()
 
             # 存取網頁
             page.goto(url)
-
-            # 等待指定的時間以確保頁面載入完成
-            print(f"等待頁面載入 {wait_time} 秒...")
-            page.wait_for_timeout(wait_time * 1000)  # 毫秒為單位
 
             # 檢查頁面是否仍在初始化
             content = page.content()
@@ -234,3 +210,40 @@ def convert_to_billion(value, decimal_places=2):
     if isinstance(value, str):
         value = value.replace(",", "")
     return round(float(value) / BILLION, decimal_places)
+
+
+def save_to_csv(df: pd.DataFrame, filename: str = "basic_stock_info.csv"):
+    """儲存資料到 CSV"""
+    try:
+        output_dir = Path("public")
+        output_dir.mkdir(exist_ok=True)
+        output_path = output_dir / filename
+
+        df.to_csv(output_path, encoding="utf-8-sig", index=False)
+        print(f"資料已成功輸出至: {output_path}")
+        print(f"共處理 {len(df)} 筆資料")
+
+    except Exception as e:
+        print(f"儲存檔案失敗: {e}")
+
+
+def convert_to_numeric(df, column, replace_values=None, fill_value=0):
+    """將欄位轉換為數值型別"""
+    if column not in df.columns:
+        return df
+
+    series = df[column].copy()
+
+    if replace_values:
+        for old_val, new_val in replace_values.items():
+            series = series.replace(old_val, new_val)
+
+    df[column] = pd.to_numeric(series, errors='coerce').fillna(fill_value)
+    return df
+
+
+def ensure_string_type(df, column):
+    """確保指定欄位為字串型別"""
+    if column in df.columns:
+        df[column] = df[column].astype(str)
+    return df

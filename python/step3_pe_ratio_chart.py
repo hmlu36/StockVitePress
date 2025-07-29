@@ -2,9 +2,7 @@ import pandas as pd
 import re
 import random
 import time
-import time
-import src.Utils2 as Utils2
-
+import utils
 """
 抓取本益比
 取得現今EPS、本益比、近五年六個級距本益比
@@ -15,18 +13,18 @@ import src.Utils2 as Utils2
 """
 
 
-def GetPE(stockId):
+def get_pe(stockId):
     url = f"https://goodinfo.tw/tw/ShowK_ChartFlow.asp?RPT_CAT=PER&STOCK_ID={stockId}&CHT_CAT=WEEK"
-    css_selector = "#divK_ChartFlowDetail"
+    css_selector = "#divDetail"
     try:
-        list = Utils2.GetDataFrameByCssSelector(url, css_selector, 2)
+        list = utils.get_dataframe_by_css_selector(url, css_selector, 2)
         #print(list)
         # 取前兩列後面倒數6欄資料, 轉成DataFrame
         firstRowDf = list.iloc[:1, -6:]
         #print(firstRowDf)
     except:
         time.sleep(random.randint(20, 30))
-        df = Utils2.GetDataFrameByCssSelector(url, css_selector, 2)
+        df = utils.get_dataframe_by_css_selector(url, css_selector, 2)
 
         # 取前兩列後面倒數6欄資料
         firstRowDf = list.iloc[:1, -6:]
@@ -73,6 +71,6 @@ def GetPE(stockId):
 
 # ------ 測試 ------
 
-#data = GetPE('2330')
+#data = get_pe('2330')
 #print(data)
 

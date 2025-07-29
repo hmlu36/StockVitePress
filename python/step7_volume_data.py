@@ -4,7 +4,6 @@ import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 import time
-from datetime import date
 import random
 from functools import reduce
 import os
@@ -205,7 +204,7 @@ def GetVolumeIndicator(result, stockId):
     return pd.DataFrame([[overBuy, allInSecurities, top15VolumeRate, buySecuritiesDiff]], columns=["超額買超", "重押券商", "前15卷商籌碼集中度", "買賣家數差"])
 
 
-def GetVolume(stockId):
+def get_volume(stockId):
     error_count = 0
     max_error_count = 10  # 最多10次
     while error_count < max_error_count:
@@ -456,6 +455,5 @@ def DecodeCaptcha(captcha):
 
 
 # ------ 測試 ------
-
-# df = GetVolume("3257")
-# print(df)
+df = get_volume("3257")
+print(df)

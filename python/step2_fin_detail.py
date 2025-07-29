@@ -1,5 +1,3 @@
-import time
-import random
 import utils
 from decimal import Decimal, ROUND_HALF_UP
 import pandas as pd
@@ -14,7 +12,7 @@ import pandas as pd
 7. ROE > 10 %
 8. 董監持股比例 > 20
 """
-def GetFinData(stockId, finType):
+def get_fin_data(stockId, finType):
     # 損益表
     if finType == "income_statement":
         url = f"https://goodinfo.tw/tw/StockFinDetail.asp?RPT_CAT=IS_M_QUAR_ACC&STOCK_ID={stockId}"
@@ -31,7 +29,6 @@ def GetFinData(stockId, finType):
     try:
         df = utils.get_dataframe_by_css_selector(url, css_selector)
     except:
-        time.sleep(random.randint(20, 30))
         df = utils.get_dataframe_by_css_selector(url, css_selector)
     # print(df)
 
@@ -44,8 +41,8 @@ def GetFinData(stockId, finType):
     return df
 
 
-def GetFinDetail(stockId):
-    df_is = GetFinData(stockId, "income_statement")
+def get_fin_detail(stockId):
+    df_is = get_fin_data(stockId, "income_statement")
 
     # 根據column名稱, 以及列的第一欄名稱取值
     # 取得年度季
@@ -79,7 +76,7 @@ def GetFinDetail(stockId):
     eps = Decimal(df_is.loc["每股稅後盈餘(元)", (yearQuarter, "金額")])
     print(f"每股稅後盈餘:{eps}")
 
-    df_bs = GetFinData(stockId, "balance_sheet")
+    df_bs = get_fin_data(stockId, "balance_sheet")
 
     # 資產總額
     total_assets = Decimal(df_bs.loc["資產總額", (yearQuarter, "金額")])
@@ -89,7 +86,7 @@ def GetFinDetail(stockId):
     total_equity = Decimal(df_bs.loc["股東權益總額", (yearQuarter, "金額")])
     print(f"股東權益總額:{total_equity}")
 
-    df_fr = GetFinData(stockId, "financial_ratio")
+    df_fr = get_fin_data(stockId, "financial_ratio")
     # print(df_fr)
 
     # 每股營業現金流量
@@ -203,5 +200,5 @@ def GetFinDetail(stockId):
 """
 
 # ------ 測試 ------
-data = GetFinDetail("8150")
+data = get_fin_detail("8150")
 print(data)
