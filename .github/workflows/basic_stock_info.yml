@@ -23,6 +23,11 @@ jobs:
         with:
           python-version: '3.x'
 
+      - name: Install libasound2 (兼容舊新 Ubuntu)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2 || sudo apt-get install -y libasound2t64
+
       - name: 安裝 Playwright 系統相依套件
         run: |
           sudo apt-get update
