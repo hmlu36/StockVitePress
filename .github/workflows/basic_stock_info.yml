@@ -52,7 +52,7 @@ jobs:
 
       - name: execute py script
         run: |
-          python python/basic_stock_info.py
+          python python/step1_basic_stock_info.py
             
       - name: Commit and Push changes
         run: |
