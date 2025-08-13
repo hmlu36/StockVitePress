@@ -13,3 +13,4 @@ pytesseract
 dotenv
 line-bot-sdk
 playwright  
+EasyOCR

@@ -9,12 +9,14 @@ from functools import reduce
 import os
 import errno
 import pyuser_agent
+import utils
 
 import re
 from PIL import Image
 from IPython.display import display
 from pytesseract import image_to_string
 import cv2
+import easyocr
 
 
 # 參考
@@ -37,16 +39,20 @@ trade_amt = 0
 
 
 def DownloadVolume(stockId):
+    
+    # 初始化
+    utils.init()
+    
     session = requests.Session()
     ua = pyuser_agent.UA()
     user_agent = ua.random
     headers = {"user-agent": user_agent}
-    response = session.get(f"{base_url}/bsMenu.aspx", headers=headers, verify=True)
+    response = session.get(f"{base_url}/bsMenu.aspx", headers=headers, verify=False)
     if response.status_code == 200:
         soup = BeautifulSoup(response.content, "html.parser")
 
         # 辨識Captcha
-        img_url = soup.findAll("img")[1]["src"]
+        img_url = soup.find_all("img")[1]["src"]
         print(img_url)
 
         img = GetCaptcha(f"{base_url}/{img_url}")
@@ -74,7 +80,7 @@ def DownloadVolume(stockId):
 
         # 送出
         # print(json.dumps(params, indent=2))
-        resp = session.post(f"{base_url}/bsMenu.aspx", data=params, headers=headers)
+        resp = session.post(f"{base_url}/bsMenu.aspx", data=params, headers=headers, verify=False)
         if resp.status_code != 200:
             print("任務失敗: %d" % resp.status_code)
             return {"success": False}
@@ -92,13 +98,13 @@ def DownloadVolume(stockId):
                 return {"success": False}
 
             # 下載分點進出 CSV
-            resp = session.get(f"{base_url}/bsContent.aspx",verify=True)
+            resp = session.get(f"{base_url}/bsContent.aspx",verify=False)
             if resp.status_code != 200:
                 print("任務失敗，無法下載分點進出 CSV")
                 return {"success": False}
 
             # print(resp.text)
-            resp = session.get(f"{base_url}/bsContent.aspx?v=t",verify=True)
+            resp = session.get(f"{base_url}/bsContent.aspx?v=t",verify=False)
             soup = BeautifulSoup(resp.text, "html.parser")
 
             # 交易日期
@@ -233,7 +239,7 @@ _errstr = "Mode is unknown or incompatible with input array shape."
 def GetCaptcha(url):
     print(url)
     img = bytes()
-    res = requests.get(url, verify=True)
+    res = requests.get(url, verify=False)
     if res.status_code == 200:
         img = res.content
         captcha_dir = os.path.join("Data", "Temp", "Captcha")
@@ -422,7 +428,7 @@ def toimage(arr, high=255, low=0, cmin=None, cmax=None, pal=None, mode=None, cha
     image = Image.frombytes(mode, shape, strdata)
     return image
 
-
+'''
 def DecodeCaptcha(captcha):
     # Convert the image file to a Numpy array and read it into a OpenCV file.
     captcha = np.asarray(bytearray(captcha), dtype="uint8")
@@ -452,8 +458,48 @@ def DecodeCaptcha(captcha):
     display(captcha)
 
     return re.sub("[^0-9A-Z]+", "", image_to_string(captcha).upper())
+'''
 
+
+def DecodeCaptcha(captcha):
+    # Convert to OpenCV format
+    captcha = np.asarray(bytearray(captcha), dtype="uint8")
+    captcha = cv2.imdecode(captcha, cv2.IMREAD_GRAYSCALE)
+    
+    print("before:")
+    display(toimage(captcha))
+    
+    # 圖像預處理
+    # 1. 二值化
+    (thresh, captcha) = cv2.threshold(captcha, 128, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+    
+    # 2. 形態學操作去除噪點
+    kernel = np.ones((2,2), np.uint8)
+    captcha = cv2.morphologyEx(captcha, cv2.MORPH_CLOSE, kernel)
+    captcha = cv2.morphologyEx(captcha, cv2.MORPH_OPEN, kernel)
+    
+    # 3. 中值濾波去噪
+    captcha = cv2.medianBlur(captcha, 3)
+    
+    # 4. 高斯模糊
+    captcha = cv2.GaussianBlur(captcha, (3,3), 0)
+    
+    # 再次二值化
+    (thresh, captcha) = cv2.threshold(captcha, 128, 255, cv2.THRESH_BINARY)
+    
+    print("after:")
+    display(toimage(captcha))
+    
+    # 使用 EasyOCR
+    reader = easyocr.Reader(['en'], gpu=False)
+    results = reader.readtext(captcha, allowlist='0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ')
+    
+    if results:
+        text = ''.join([result[1] for result in results])
+        return re.sub("[^0-9A-Z]+", "", text.upper())
+    
+    return ""
 
 # ------ 測試 ------
-df = get_volume("3257")
-print(df)
+# df = get_volume("3257")
+# print(df)

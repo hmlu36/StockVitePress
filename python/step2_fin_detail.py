@@ -36,6 +36,11 @@ def get_fin_data(stockId, finType):
     # print(df.columns)
     # print(df.iloc[:, 0])
 
+    # 檢查 DataFrame 是否為空或沒有欄位
+    if df.empty or df.shape[1] == 0:
+        print(f"警告: 無法取得 {finType} 資料，DataFrame 為空")
+        return pd.DataFrame()
+    
     # 設置DataFrame的索引為第一列的值
     df.set_index(df.iloc[:, 0], inplace=True)
     return df
@@ -200,5 +205,5 @@ def get_fin_detail(stockId):
 """
 
 # ------ 測試 ------
-data = get_fin_detail("8150")
-print(data)
+# data = get_fin_detail("8150")
+# print(data)

@@ -85,7 +85,10 @@ def get_dataframe_by_css_selector(url, css_selector, wait_time=5):
     with sync_playwright() as playwright:
         try:
             # 設定瀏覽器選項
-            browser = playwright.chromium.launch(headless=True)
+            browser = playwright.chromium.launch(
+                headless=True,
+                args=['--disable-blink-features=AutomationControlled']  # 避免被偵測為自動化
+            )
             ua = pyuser_agent.UA()
             context = browser.new_context(
                 viewport={"width": 1920, "height": 1080},
@@ -93,15 +96,30 @@ def get_dataframe_by_css_selector(url, css_selector, wait_time=5):
             )
             page = context.new_page()
 
-            # 存取網頁
-            page.goto(url)
+            # 設定更長的超時時間，並改用 domcontentloaded 而不是 networkidle
+            try:
+                page.goto(url, wait_until="domcontentloaded", timeout=60000)  # 60秒超時
+                # 額外等待確保動態內容載入
+                page.wait_for_timeout(5000)  # 等待 5 秒
+                
+                if "初始化中" in content:
+                    # 如果還在初始化，再多等待一段時間
+                    print("頁面仍在初始化中，增加等待時間...")
+                    page.wait_for_timeout(10000)  # 多等待 10 秒
+            except Exception as goto_error:
+                print(f"頁面載入失敗，嘗試重新載入: {goto_error}")
+                try:
+                    # 嘗試用 load 策略重新載入
+                    page.goto(url, wait_until="load", timeout=60000)
+                    page.wait_for_timeout(3000)
+                except Exception as retry_error:
+                    print(f"重新載入也失敗: {retry_error}")
+                    browser.close()
+                    return pd.DataFrame()
 
             # 檢查頁面是否仍在初始化
             content = page.content()
-            if "初始化中" in content:
-                # 如果還在初始化，再多等待一段時間
-                print("頁面仍在初始化中，增加等待時間...")
-                page.wait_for_timeout(10000)  # 多等待 10 秒
+            #print(content)
 
             # 使用 CSS 選擇器查找元素
             try:
