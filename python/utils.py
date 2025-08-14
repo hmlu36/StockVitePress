@@ -102,6 +102,10 @@ def get_dataframe_by_css_selector(url, css_selector, wait_time=5):
                 # 額外等待確保動態內容載入
                 page.wait_for_timeout(5000)  # 等待 5 秒
                 
+                # 先取得頁面內容再檢查
+                content = page.content()
+                #print(content)
+                
                 if "初始化中" in content:
                     # 如果還在初始化，再多等待一段時間
                     print("頁面仍在初始化中，增加等待時間...")
@@ -117,9 +121,6 @@ def get_dataframe_by_css_selector(url, css_selector, wait_time=5):
                     browser.close()
                     return pd.DataFrame()
 
-            # 檢查頁面是否仍在初始化
-            content = page.content()
-            #print(content)
 
             # 使用 CSS 選擇器查找元素
             try:

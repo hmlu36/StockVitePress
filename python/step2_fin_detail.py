@@ -30,11 +30,6 @@ def get_fin_data(stockId, finType):
         df = utils.get_dataframe_by_css_selector(url, css_selector)
     except:
         df = utils.get_dataframe_by_css_selector(url, css_selector)
-    # print(df)
-
-    # 所有columns和index名稱
-    # print(df.columns)
-    # print(df.iloc[:, 0])
 
     # 檢查 DataFrame 是否為空或沒有欄位
     if df.empty or df.shape[1] == 0:
@@ -48,16 +43,18 @@ def get_fin_data(stockId, finType):
 
 def get_fin_detail(stockId):
     df_is = get_fin_data(stockId, "income_statement")
+    
+    if df_is.empty:
+        print(f"無法取得 {stockId} 的損益表資料")
+        return pd.DataFrame()
 
     # 根據column名稱, 以及列的第一欄名稱取值
     # 取得年度季
     yearQuarter = df_is.columns[1][0]
     print(yearQuarter)
 
-    # 營業收入 (含 其他收益及費損合計)
-    operating_revenue = Decimal(df_is.loc["營業收入", (yearQuarter, "金額")]) + Decimal(
-        df_is.loc["其他收益及費損合計", (yearQuarter, "金額")]
-    )
+    # 營業收入 (不含其他收益及費損，因為那是業外項目)
+    operating_revenue = Decimal(df_is.loc["營業收入", (yearQuarter, "金額")])
     print(f"營業收入:{operating_revenue}")
 
     # 營業成本
@@ -76,12 +73,16 @@ def get_fin_detail(stockId):
     non_operating_income_expense = Decimal(
         df_is.loc["業外損益合計", (yearQuarter, "金額")]
     )
+    print(f"業外損益合計:{non_operating_income_expense}")
 
     # 每股稅後盈餘(元)
     eps = Decimal(df_is.loc["每股稅後盈餘(元)", (yearQuarter, "金額")])
     print(f"每股稅後盈餘:{eps}")
 
     df_bs = get_fin_data(stockId, "balance_sheet")
+    if df_bs.empty:
+        print(f"無法取得 {stockId} 的資產負債表資料")
+        return pd.DataFrame()
 
     # 資產總額
     total_assets = Decimal(df_bs.loc["資產總額", (yearQuarter, "金額")])
@@ -92,7 +93,9 @@ def get_fin_detail(stockId):
     print(f"股東權益總額:{total_equity}")
 
     df_fr = get_fin_data(stockId, "financial_ratio")
-    # print(df_fr)
+    if df_fr.empty:
+        print(f"無法取得 {stockId} 的財務比率資料")
+        return pd.DataFrame()
 
     # 每股營業現金流量
     operating_cash_flow_per_share = Decimal(
@@ -108,88 +111,101 @@ def get_fin_detail(stockId):
     financial_score = Decimal(df_fr.loc["財報評分 (100為滿分)", yearQuarter])
     print(f"財報評分:{financial_score}")
 
-    # ---- 計算財務相關公式 ----
+    # ---- 計算財務相關公式 (修正版) ----
 
-    # 毛利率 	    =（營業收入 - 營業成本） / 營業收入
+    # 毛利率 = (營業收入 - 營業成本) / 營業收入 * 100%
     gross_profit = operating_revenue - operating_costs
     print(f"毛利:{gross_profit}")
+    
     if operating_revenue == 0:
-        gross_profit_margin = 0
+        gross_profit_margin = Decimal("0")
     else:
         gross_profit_margin = (gross_profit / operating_revenue * 100).quantize(
             Decimal(".01"), rounding=ROUND_HALF_UP
         )
-    print(f"毛利率:{gross_profit_margin}")
+    print(f"毛利率:{gross_profit_margin}%")
 
-    # 營業利益率    =（營業收入 - 營業成本 - 營業費用） / 營業成本
+    # 營業利益率 = (營業收入 - 營業成本 - 營業費用) / 營業收入 * 100%
     operating_profit = operating_revenue - operating_costs - operating_expenses
     print(f"營業利益:{operating_profit}")
-    if operating_costs == 0:
-        operating_profit_margin = 0
+    
+    if operating_revenue == 0:
+        operating_profit_margin = Decimal("0")
     else:
-        operating_profit_margin = (operating_profit / operating_costs * 100).quantize(
+        operating_profit_margin = (operating_profit / operating_revenue * 100).quantize(
             Decimal(".01"), rounding=ROUND_HALF_UP
         )
-    print(f"營業利益率:{operating_profit_margin}")
+    print(f"營業利益率:{operating_profit_margin}%")
 
-    # 淨利率        =（毛利 – 營業費用 – 稅額） / 營業成本
-    net_profit = gross_profit - operating_expenses - tax_expense
-    print(f"淨利:{net_profit}")
-    if operating_costs == 0:
-        net_profit_margin = 0
-    else:
-        net_profit_margin = (net_profit / operating_costs * 100).quantize(
-            Decimal(".01"), rounding=ROUND_HALF_UP
-        )
-    print(f"淨利率:{net_profit_margin}")
-
-    # 稅前淨利率    = 營業利益 + 業外損益
+    # 稅前淨利率 = (營業利益 + 業外損益) / 營業收入 * 100%
     pre_tax_net_profit = operating_profit + non_operating_income_expense
     print(f"稅前淨利:{pre_tax_net_profit}")
-    pre_tax_net_profit_margin = (pre_tax_net_profit / operating_revenue * 100).quantize(
-        Decimal(".01"), rounding=ROUND_HALF_UP
-    )
-    print(f"稅前淨利率:{pre_tax_net_profit_margin}")
+    
+    if operating_revenue == 0:
+        pre_tax_net_profit_margin = Decimal("0")
+    else:
+        pre_tax_net_profit_margin = (pre_tax_net_profit / operating_revenue * 100).quantize(
+            Decimal(".01"), rounding=ROUND_HALF_UP
+        )
+    print(f"稅前淨利率:{pre_tax_net_profit_margin}%")
 
-    # 稅後淨利率    = 稅前淨利 － 所得稅
+    # 稅後淨利率 = (稅前淨利 - 所得稅費用) / 營業收入 * 100%
     post_tax_net_profit = pre_tax_net_profit - tax_expense
     print(f"稅後淨利:{post_tax_net_profit}")
-    post_tax_net_profit_margin = (
-        post_tax_net_profit / operating_revenue * 100
-    ).quantize(Decimal(".01"), rounding=ROUND_HALF_UP)
-    print(f"稅後淨利率:{post_tax_net_profit_margin}")
+    
+    if operating_revenue == 0:
+        post_tax_net_profit_margin = Decimal("0")
+    else:
+        post_tax_net_profit_margin = (post_tax_net_profit / operating_revenue * 100).quantize(
+            Decimal(".01"), rounding=ROUND_HALF_UP
+        )
+    print(f"稅後淨利率:{post_tax_net_profit_margin}%")
 
-    # 總資產週轉率  = 營業收入 / 總資產
-    total_asset_turnover_ratio = (operating_revenue / total_assets).quantize(
-        Decimal(".01"), rounding=ROUND_HALF_UP
-    )
+    # 總資產週轉率 = 營業收入 / 總資產
+    if total_assets == 0:
+        total_asset_turnover_ratio = Decimal("0")
+    else:
+        total_asset_turnover_ratio = (operating_revenue / total_assets).quantize(
+            Decimal(".01"), rounding=ROUND_HALF_UP
+        )
     print(f"總資產週轉率:{total_asset_turnover_ratio}")
 
-    # 權益乘數(ROE) = 總資產 / 股東權益
-    equity_multiplier = (total_assets / total_equity).quantize(
-        Decimal(".01"), rounding=ROUND_HALF_UP
-    )
-    print(f"權益乘數:{equity_multiplier}")
+    # ROE (股東權益報酬率) = 稅後淨利 / 股東權益 * 100%
+    if total_equity == 0:
+        roe = Decimal("0")
+    else:
+        roe = (post_tax_net_profit / total_equity * 100).quantize(
+            Decimal(".01"), rounding=ROUND_HALF_UP
+        )
+    print(f"ROE:{roe}%")
 
-    # 本業收益      = 營業利益 / 稅前淨利
-    core_business_income_ratio = (operating_profit / pre_tax_net_profit * 100).quantize(Decimal(".01"), rounding=ROUND_HALF_UP)
-    print(f"本業收益:{core_business_income_ratio}")
+    # 本業收益比率 = 營業利益 / 稅前淨利 * 100%
+    if pre_tax_net_profit == 0:
+        core_business_income_ratio = Decimal("0")
+    else:
+        core_business_income_ratio = (operating_profit / pre_tax_net_profit * 100).quantize(
+            Decimal(".01"), rounding=ROUND_HALF_UP
+        )
+    print(f"本業收益比率:{core_business_income_ratio}%")
     
     # 构建包含所有指标的字典
     financial_metrics = {
-        "毛利率": net_profit_margin,
+        "毛利率": gross_profit_margin,
         "營業利益率": operating_profit_margin,
-        "ROE": total_equity,
+        "ROE": roe,
         "稅前淨利率": pre_tax_net_profit_margin,
         "稅後淨利率": post_tax_net_profit_margin,
         "總資產週轉率": total_asset_turnover_ratio,
         "本業收益": core_business_income_ratio,
+        "本業收益比率": core_business_income_ratio,
         "每股營業現金流量": operating_cash_flow_per_share,
         "每股自由現金流量": free_cash_flow_per_share,
         "財報評分": financial_score,
+        "EPS": eps
     }
     
     return pd.DataFrame([financial_metrics])
+
 """
 盈餘再投資比率
 
@@ -205,5 +221,6 @@ def get_fin_detail(stockId):
 """
 
 # ------ 測試 ------
-# data = get_fin_detail("8150")
-# print(data)
+if __name__ == "__main__":
+    data = get_fin_detail("2330")
+    print(data)
