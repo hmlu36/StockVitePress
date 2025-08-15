@@ -108,6 +108,67 @@ def GetChampionStock(op):
                 temp_df = pd.concat([stockInfo_df, transaction_df, volume_df, PE_df, distribution_df, finDetail_df, dividend_df], axis=1)
                 print(temp_df)
 
+                # 成長價值指標(Growth Value Index)
+                # 參數：GVI = (B/P) * (1+ROE)^n
+                n = 5  # 可依需求調整年數
+
+                # 計算 B/P（優先使用「淨值比」(P/B)）
+                if '淨值比' in temp_df.columns:
+                    pb = pd.to_numeric(temp_df['淨值比'], errors='coerce')
+                    # 避免除以零
+                    temp_df['B_P'] = pb.replace(0, pd.NA).apply(lambda x: 1.0/x if pd.notna(x) and x != 0 else pd.NA)
+                else:
+                    # 嘗試用每股淨值 / 價格 計算（常見欄位名稱）
+                    price_col = None
+                    for c in ['成交價', '收盤價', '成交價_本日']:
+                        if c in temp_df.columns:
+                            price_col = c
+                            break
+                    bv_col = None
+                    for c in ['每股淨值', '每股淨值(元)', '每股淨值_帳面']:
+                        if c in temp_df.columns:
+                            bv_col = c
+                            break
+                    if bv_col and price_col:
+                        temp_df['B_P'] = pd.to_numeric(temp_df[bv_col], errors='coerce') / pd.to_numeric(temp_df[price_col], errors='coerce')
+                    else:
+                        temp_df['B_P'] = pd.NA
+
+                # 找出可能的 ROE 欄位（改為以字串比對，保護型處理）
+                col_strs = [str(c) for c in temp_df.columns]
+                roe_keywords = ['ROE', '股東權益報酬率', '股東權益', 'ROE%']
+                match_idx = next((i for i, s in enumerate(col_strs) if any(k in s for k in roe_keywords)), None)
+
+                if match_idx is not None:
+                    col_name = temp_df.columns[match_idx]
+                    roe_raw = pd.to_numeric(temp_df[col_name], errors='coerce')
+                    # 若值看起來像百分比(例如最大值 > 2)，就 /100 轉為小數
+                    if roe_raw.abs().max(skipna=True) > 2:
+                        temp_df['ROE'] = roe_raw / 100.0
+                    else:
+                        temp_df['ROE'] = roe_raw
+                else:
+                    # 備援：嘗試使用其他常見欄位
+                    fallback_candidates = ['稅後純益率', '稅後淨利率', '淨利率']
+                    fallback_col = next((col for col in temp_df.columns if any(f in str(col) for f in fallback_candidates)), None)
+                    if fallback_col is not None:
+                        val = pd.to_numeric(temp_df[fallback_col], errors='coerce')
+                        temp_df['ROE'] = val / 100.0 if val.abs().max(skipna=True) > 2 else val
+                    else:
+                        temp_df['ROE'] = pd.NA
+
+                # 計算 GVI，處理缺值
+                def safe_gvi(bp, roe, n):
+                    try:
+                        if pd.isna(bp) or pd.isna(roe):
+                            return pd.NA
+                        return float(bp) * (1.0 + float(roe)) ** n
+                    except Exception:
+                        return pd.NA
+
+                temp_df['GVI_n'] = temp_df.apply(lambda r: safe_gvi(r.get('B_P'), r.get('ROE'), n), axis=1)
+                print(temp_df[['證券代號', 'B_P', 'ROE', 'GVI_n']].head())
+
                 # 將列合併入dataframe
                 # sum_df = pd.concat([sum_df, temp_df], axis=0)
 

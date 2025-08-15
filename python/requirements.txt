@@ -7,9 +7,7 @@ pyuser_agent
 fake_useragent
 Pillow
 IPython
-pytesseract
 Opencv-python
-pytesseract
 dotenv
 line-bot-sdk
 playwright  

@@ -14,7 +14,6 @@ import utils
 import re
 from PIL import Image
 from IPython.display import display
-from pytesseract import image_to_string
 import cv2
 import easyocr
 
@@ -427,39 +426,6 @@ def toimage(arr, high=255, low=0, cmin=None, cmax=None, pal=None, mode=None, cha
     # Here we know data and mode is correct
     image = Image.frombytes(mode, shape, strdata)
     return image
-
-'''
-def DecodeCaptcha(captcha):
-    # Convert the image file to a Numpy array and read it into a OpenCV file.
-    captcha = np.asarray(bytearray(captcha), dtype="uint8")
-    captcha = cv2.imdecode(captcha, cv2.IMREAD_GRAYSCALE)
-
-    # Let's first see what the original image looks like.
-    print("before:")
-    display(toimage(captcha))
-
-    # Convert the captcha to black and white.
-    (thresh, captcha) = cv2.threshold(captcha, 128, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
-
-    # Erode the image to remove dot noise and that wierd line. I use a 3x3 rectengal as the kernal.
-    captcha = cv2.erode(captcha, np.ones((3, 3), dtype=np.uint8))
-
-    # Convert the image to black and white and again to further remove noise.
-    (thresh, captcha) = cv2.threshold(captcha, 128, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
-
-    # Some cosmetic
-    captcha = cv2.fastNlMeansDenoising(captcha, h=50)
-
-    # Turn the Numpy array back into a image
-    captcha = toimage(captcha)
-
-    # Check the result of our cleaning process
-    print("after:")
-    display(captcha)
-
-    return re.sub("[^0-9A-Z]+", "", image_to_string(captcha).upper())
-'''
-
 
 def DecodeCaptcha(captcha):
     # Convert to OpenCV format

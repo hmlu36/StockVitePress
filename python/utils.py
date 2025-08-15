@@ -70,99 +70,131 @@ def get_root_path():
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def get_dataframe_by_css_selector(url, css_selector, wait_time=5):
+# ...existing code...
+def get_dataframe_by_css_selector(url, css_selector, wait_time=5, retries=3, headless=True, timeout=60000):
     """
-    Fetch HTML content from a URL, parse it using a CSS selector, and return a DataFrame.
-
-    Parameters:
-    url (str): The URL to fetch the HTML content from.
-    css_selector (str): The CSS selector to locate the desired HTML element.
-
-    Returns:
-    pd.DataFrame: The parsed data as a DataFrame.
+    使用 requests 先嘗試取得靜態內容，若失敗或頁面需要 JS，改用 Playwright 抓取後解析成 DataFrame。
+    參數:
+      url (str): 目標網址
+      css_selector (str): 要抓取的 CSS 選擇器
+      wait_time (int): 在頁面載入後額外等待的秒數
+      retries (int): Playwright 重試次數
+      headless (bool): 是否無頭模式
+      timeout (int): Playwright 導覽超時 (毫秒)
+    回傳:
+      pd.DataFrame
     """
-
-    with sync_playwright() as playwright:
-        try:
-            # 設定瀏覽器選項
-            browser = playwright.chromium.launch(
-                headless=True,
-                args=['--disable-blink-features=AutomationControlled']  # 避免被偵測為自動化
-            )
-            ua = pyuser_agent.UA()
-            context = browser.new_context(
-                viewport={"width": 1920, "height": 1080},
-                user_agent=ua.random
-            )
-            page = context.new_page()
-
-            # 設定更長的超時時間，並改用 domcontentloaded 而不是 networkidle
+    # 先用 requests 嘗試（較輕量）
+    try:
+        resp = fetch_data(url)
+        soup = BeautifulSoup(resp.text, "html.parser")
+        el = soup.select_one(css_selector)
+        if el:
             try:
-                page.goto(url, wait_until="domcontentloaded", timeout=60000)  # 60秒超時
-                # 額外等待確保動態內容載入
-                page.wait_for_timeout(5000)  # 等待 5 秒
-                
-                # 先取得頁面內容再檢查
-                content = page.content()
-                #print(content)
-                
-                if "初始化中" in content:
-                    # 如果還在初始化，再多等待一段時間
-                    print("頁面仍在初始化中，增加等待時間...")
-                    page.wait_for_timeout(10000)  # 多等待 10 秒
-            except Exception as goto_error:
-                print(f"頁面載入失敗，嘗試重新載入: {goto_error}")
-                try:
-                    # 嘗試用 load 策略重新載入
-                    page.goto(url, wait_until="load", timeout=60000)
-                    page.wait_for_timeout(3000)
-                except Exception as retry_error:
-                    print(f"重新載入也失敗: {retry_error}")
-                    browser.close()
-                    return pd.DataFrame()
+                dfs = pd.read_html(StringIO(str(el)))
+                for df in dfs:
+                    if len(df) > 0:
+                        return df
+            except Exception:
+                # 若靜態解析失敗，將改用 Playwright
+                pass
+    except Exception as e:
+        # 網路或解析錯誤，改用 Playwright
+        print(f"requests 取得頁面失敗: {e}")
 
-
-            # 使用 CSS 選擇器查找元素
+    # 使用 Playwright 抓取（重試機制）
+    last_err = None
+    for attempt in range(1, retries + 1):
+        with sync_playwright() as playwright:
+            browser = None
             try:
-                # 等待元素出現
-                element = page.wait_for_selector(css_selector, timeout=30000)
-                if not element:
-                    print(f"在 Playwright 中找不到元素: {css_selector}")
-                    browser.close()
-                    return pd.DataFrame()
-
-                # 獲取元素的 HTML
-                html_content = element.inner_html()
-
-                # 解析 HTML 內容
+                ua = pyuser_agent.UA()
+                browser = playwright.chromium.launch(
+                    headless=headless,
+                    args=[
+                        "--no-sandbox",
+                        "--disable-setuid-sandbox",
+                        "--disable-dev-shm-usage",
+                        "--disable-gpu",
+                        "--disable-blink-features=AutomationControlled"
+                    ]
+                )
+                context = browser.new_context(
+                    viewport={"width": 1920, "height": 1080},
+                    user_agent=ua.random
+                )
+                page = context.new_page()
+                # 導覽
+                page.goto(url, wait_until="domcontentloaded", timeout=timeout)
+                # 等待到元素或額外等待時間
                 try:
-                    soup = BeautifulSoup(f"<table>{html_content}</table>", "html.parser")
-                    dfs = pd.read_html(StringIO(soup.prettify()))
+                    page.wait_for_selector(css_selector, timeout=min(timeout, 30000))
+                except Exception:
+                    # 若無法在短時間內找到，仍等候額外時間
+                    page.wait_for_timeout(wait_time * 1000)
 
+                # 取得元素 HTML（若找不到元素則取整頁）
+                try:
+                    element = page.query_selector(css_selector)
+                    html = element.inner_html() if element else page.content()
+                except Exception:
+                    html = page.content()
+
+                # 解析為 DataFrame
+                soup = BeautifulSoup(html, "html.parser")
+                # 如果選到的元素不是 <table>，嘗試直接找到 table
+                tables = soup.find_all("table")
+                if not tables:
+                    # 若直接為片段且不是 table，嘗試把片段包成 table
+                    try:
+                        dfs = pd.read_html(StringIO(str(soup)))
+                    except Exception:
+                        dfs = []
+                else:
+                    dfs = []
+                    for t in tables:
+                        try:
+                            dlist = pd.read_html(StringIO(str(t)))
+                            dfs.extend(dlist)
+                        except Exception:
+                            continue
+
+                # 關閉 page/context/browser
+                try:
+                    page.close()
+                except:
+                    pass
+                try:
+                    context.close()
+                except:
+                    pass
+                try:
                     browser.close()
+                except:
+                    pass
 
-                    for df in dfs:
-                        if len(df) > 1:
-                            return df
-                    return pd.DataFrame()
-                except Exception as e:
-                    print(f"解析 Playwright 獲取的 HTML 時發生錯誤: {e}")
-                    browser.close()
-                    return pd.DataFrame()
-
-            except Exception as e:
-                print(f"在 Playwright 中處理元素時發生錯誤: {e}")
-                browser.close()
+                # 回傳第一個有效的 DataFrame
+                for df in dfs:
+                    if isinstance(df, pd.DataFrame) and len(df) > 0:
+                        return df
+                # 若沒有表格則回傳空的 DataFrame
                 return pd.DataFrame()
 
-        except Exception as e:
-            print(f"Playwright 抓取過程中發生錯誤: {e}")
-            try:
-                browser.close()
-            except:
-                pass
-            return pd.DataFrame()
+            except Exception as e:
+                last_err = e
+                print(f"Playwright 嘗試第 {attempt} 次失敗: {e}")
+                try:
+                    if browser:
+                        browser.close()
+                except:
+                    pass
+                # 指數退避 (簡單)
+                time.sleep(min(5 * attempt, 30))
+                continue
 
+    # 若全部重試都失敗，記錄錯誤並回傳空 DataFrame
+    print(f"Playwright 全部重試失敗, 最後錯誤: {last_err}")
+    return pd.DataFrame()
 
 def get_business_day(count=1):
     end_date = datetime.today()
