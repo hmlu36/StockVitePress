@@ -1,35 +1,30 @@
-from io import StringIO
-import requests
-from bs4 import BeautifulSoup
 import pandas as pd
 import random
 import time
 from datetime import datetime
-import os
-import src.Utils2 as Utils2
-import pyuser_agent
+import utils
 
-def GetDividend(stockId):
+def get_dividend(stockId):
     url = f'https://goodinfo.tw/tw/StockDividendPolicy.asp?STOCK_ID={stockId}'
     cssSelector = '#divDetail'
     try:
-        df = Utils2.GetDataFrameByCssSelector(url, cssSelector)
+        df = utils.get_dataframe_by_css_selector(url, cssSelector)
         df.columns = df.columns.get_level_values(3)
     except:
         time.sleep(random.randint(20, 30))
-        df = Utils2.GetDataFrameByCssSelector(url, cssSelector)
+        df = utils.get_dataframe_by_css_selector(url, cssSelector)
         df.columns = df.columns.get_level_values(3)
 
     # column replace space
     df.columns = df.columns.str.replace(' ', '')
 
     # filter not  ∟
-    df = df[df['股利發放年度'] != '∟']
+    df = df[df['股利發放期間'] != '∟']
     #print(df)
 
     # 年度大於2022, 移除第一列
     firstRow = df.iloc[0, :]
-    if int(firstRow['股利發放年度']) > datetime.now().year:
+    if int(firstRow['股利發放期間']) > datetime.now().year:
         df = df.iloc[1: , :]
 
     rowsCount = 5
@@ -55,7 +50,7 @@ def GetDividend(stockId):
     return df
 
 
-def GetAllDividend():    
+def get_all_dividend():    
     cssSelector = '#divStockList'
     
     for rankIndex in range(0, 6):
@@ -67,11 +62,11 @@ def GetAllDividend():
         time.sleep(random.randint(10, 20))
 
         try:
-            df = GetDataFrameByCssSelector(url, cssSelector)
+            df = utils.get_dataframe_by_css_selector(url, cssSelector)
             #return df
         except:
             time.sleep(random.randint(20, 30))
-            df = GetDataFrameByCssSelector(url, cssSelector)
+            df = utils.get_dataframe_by_css_selector(url, cssSelector)
             print(df)
             #df.columns = df.columns.get_level_values(1)
 
@@ -84,7 +79,7 @@ def GetAllDividend():
         #df = df[gain & length]
         df = df[length]
 
-        filePath = f'{Utils2.GetRootPath()}\Data\Yearly\合計股利.csv'
+        filePath = f'{utils.GetRootPath()}\Data\Yearly\合計股利.csv'
         if rankIndex == 0:
             df.to_csv(filePath, encoding='utf_8_sig')
         else:
@@ -102,6 +97,5 @@ def GetAllDividend():
 
 
 # ------ 測試 ------
-
-#df = GetDividend('2356')
+#df = get_dividend('2356')
 #print(df)

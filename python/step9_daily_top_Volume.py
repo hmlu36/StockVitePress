@@ -7,7 +7,7 @@ import os
 import pyuser_agent
 import requests
 
-def GetTopVolume():    
+def get_top_volume():    
     cssSelector = '#divStockList'
 
     url = f'https://goodinfo.tw/tw/StockList.asp?RPT_TIME=&MARKET_CAT=熱門排行&INDUSTRY_CAT=日成交張數創近期新高日數@@成交張數@@日成交張數創近期新高日數'

@@ -7,8 +7,8 @@ pyuser_agent
 fake_useragent
 Pillow
 IPython
-pytesseract
 Opencv-python
-pytesseract
-webdriver-manager
-selenium
+dotenv
+line-bot-sdk
+playwright  
+EasyOCR

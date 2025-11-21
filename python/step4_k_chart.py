@@ -1,11 +1,7 @@
-from io import StringIO
-import requests
-from bs4 import BeautifulSoup
 import pandas as pd
 import random
 import time
-import pyuser_agent
-import src.Utils2 as Utils2
+import utils
 
 '''
 url_root = 'https://goodinfo.tw/StockInfo/ShowK_Chart.asp'
@@ -20,29 +16,29 @@ cssSelector = '#divPriceDetail'
 df = Utils.PostDataFrameByCssSelector(url_root, payload, cssSelector)
 '''
 
-def GetTransaction(stockId):
+def get_transaction(stockId):
     url = f'https://goodinfo.tw/tw/ShowK_Chart.asp?STOCK_ID={stockId}&CHT_CAT2=DATE'
-    cssSelector = '#divPriceDetail'
+    cssSelector = '#divDetail'
     try:
-        df = Utils2.GetDataFrameByCssSelector(url, cssSelector)
+        df = utils.get_dataframe_by_css_selector(url, cssSelector)
         df.columns = df.columns.get_level_values(1)
     except:
         time.sleep(random.randint(20, 30))
-        df = Utils2.GetDataFrameByCssSelector(url, cssSelector)
+        df = utils.get_dataframe_by_css_selector(url, cssSelector)
         df.columns = df.columns.get_level_values(1)
     # 印出全部的rows
     #pd.set_option('display.max_rows', df.shape[0]+1)
     #print(df)
 
     headers = ['收盤', '張數', '外資  持股  (%)', '券資  比  (%)']
-    smaPeroids = [1, 5, 20, 60]
-    
+    smaPeriods = [1, 5, 20, 60]
+
     dict = {}
     for header in headers:
         try:
             #print(header)
             entry = ''
-            for period in smaPeroids:
+            for period in smaPeriods:
                 #print(df[header])
                 data = pd.to_numeric(df[header], errors='coerce').dropna(how='any',axis=0).head(period)
                 #print(data)
@@ -69,9 +65,9 @@ def GetTransaction(stockId):
                     entry = '🏆' + entry
                     
 
-            dict.update({header.replace(' ', '') + '(' +  'ma / '.join(map(str, smaPeroids)) + 'ma)': str(entry)})
+            dict.update({header.replace(' ', '') + '(' +  'ma / '.join(map(str, smaPeriods)) + 'ma)': str(entry)})
         except:
-            dict.update({header.replace(' ', '') + '(' +  'ma / '.join(map(str, smaPeroids)) + 'ma)': ''})
+            dict.update({header.replace(' ', '') + '(' +  'ma / '.join(map(str, smaPeriods)) + 'ma)': ''})
     #print(dict)
     result = pd.DataFrame([dict])
     return result
@@ -85,7 +81,5 @@ def GetTransaction(stockId):
 
 
 # ------ 測試 ------
-'''
-df = GetTransaction('2330')
-print(df)
-'''
+#df = get_transaction('2330')
+#print(df)

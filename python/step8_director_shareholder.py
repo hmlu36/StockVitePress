@@ -1,24 +1,14 @@
-from io import StringIO
-from bs4 import BeautifulSoup
-import requests
 import random
 import time
 import pandas as pd
-import os
-
-from selenium import webdriver
-from webdriver_manager.chrome import ChromeDriverManager
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from bs4 import BeautifulSoup
-import src.Utils2 as Utils2
+import utils
 
 
-def GetStockBoardTop():
+def get_stock_board_top():
     # 取自神秘金字塔
     url = "https://norway.twsthr.info/StockBoardTop.aspx"
     cssSelector = "#details"
-    df = Utils2.GetDataFrameByCssSelector(url, cssSelector)
+    df = utils.get_dataframe_by_css_selector(url, cssSelector)
     df.columns = df.columns.get_level_values(0)
     df = df.iloc[:, [3, 7]]
     
@@ -30,7 +20,7 @@ def GetStockBoardTop():
     return df
 
 
-def GetDirectorSharehold():
+def get_director_shareholder():
     cssSelector = "#divStockList"
     sum_df = pd.DataFrame()
 
@@ -40,13 +30,13 @@ def GetDirectorSharehold():
 
         try:
             time.sleep(random.randint(5, 10))
-            df = Utils2.GetDataFrameByCssSelector(url, cssSelector)
+            df = utils.get_dataframe_by_css_selector(url, cssSelector)
             print(df)
             sum_df = pd.concat([sum_df, df], axis=0)
             # df.columns = df.columns.get_level_values(1)
         except:
             time.sleep(random.randint(20, 30))
-            df = Utils2.GetDataFrameByCssSelector(url, cssSelector)
+            df = utils.get_dataframe_by_css_selector(url, cssSelector)
             print(df)
             # df.columns = df.columns.get_level_values(1)
 
@@ -56,5 +46,5 @@ def GetDirectorSharehold():
     return sum_df
 
 # ------ 測試 ------
-#print(GetDirectorSharehold())
-#print(GetStockBoardTop())
+print(get_director_shareholder())
+print(get_stock_board_top())
