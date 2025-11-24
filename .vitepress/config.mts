@@ -20,7 +20,8 @@ export default defineConfig({
         text: 'Examples',
         items: [
           { text: '篩選基本資料', link: '/basic_stock_info' },
-          { text: '三大法人', link: '/institutionI_investors' }
+          { text: '三大法人', link: '/institutionI_investors' },
+          { text: 'GVI + 三因子', link: '/Stock_GVI_ThreeFactor' }
         ]
       }
     ],
