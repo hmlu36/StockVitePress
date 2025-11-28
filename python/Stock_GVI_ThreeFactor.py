@@ -4,6 +4,7 @@ import numpy as np
 import twstock
 import time
 import os
+import datetime
 
 
 def get_stock_list(filename="stock_list.txt"):
@@ -90,13 +91,63 @@ def parse_float(value, default=np.nan):
         return default
 
 
+def calculate_min_pe_5y(ticker, history_data, symbol):
+    """計算近五年(或四年)最低本益比"""
+    try:
+        # 取得年度財報中的 EPS
+        fin = ticker.financials
+        if fin.empty:
+            return np.nan
+
+        if 'Basic EPS' not in fin.index:
+            return np.nan
+
+        eps_series = fin.loc['Basic EPS']
+        # 確保是數值
+        eps_series = pd.to_numeric(eps_series, errors='coerce').dropna()
+
+        if eps_series.empty:
+            return np.nan
+
+        min_pes = []
+
+        # 取得股價歷史
+        df_p = history_data[symbol] if not history_data.empty and symbol in history_data else pd.DataFrame()
+        if df_p.empty:
+            # 若批量抓取沒有，嘗試個別抓取
+            df_p = ticker.history(period="5y")
+
+        if df_p.empty:
+            return np.nan
+
+        df_p.index = pd.to_datetime(df_p.index)
+
+        for date, eps in eps_series.items():
+            year = date.year
+            # 取得該年度的股價數據
+            mask = df_p.index.year == year
+            year_prices = df_p.loc[mask]
+
+            if not year_prices.empty and eps > 0:
+                min_price = year_prices['Close'].min()
+                min_pe = min_price / eps
+                min_pes.append(min_pe)
+
+        if min_pes:
+            return min(min_pes)
+        return np.nan
+    except Exception as e:
+        return np.nan
+
+
 def fetch_stock_data(stock_list, ref_df=None):
     print(f"正在抓取 {len(stock_list)} 檔股票資料...")
     result_list = []
 
-    # 批量下載歷史股價（擴展至 6 個月以計算 20 日報酬率）
+    # 批量下載歷史股價（擴展至 5 年以計算最低本益比）
     try:
-        history_data = yf.download(stock_list, period="6mo", group_by='ticker', threads=True)
+        # 注意: 5y 資料量較大，若股票多可能會慢。
+        history_data = yf.download(stock_list, period="5y", group_by='ticker', threads=True)
     except:
         history_data = pd.DataFrame()
 
@@ -109,31 +160,35 @@ def fetch_stock_data(stock_list, ref_df=None):
             if ref_df is not None and stock_id in ref_df.index:
                 ref_data = ref_df.loc[stock_id]
 
-            # 優化: 若有參考資料，則不需抓取 yfinance info (速度較慢)
-            info = {}
-            if ref_data is None:
-                try:
-                    ticker = yf.Ticker(symbol)
-                    info = ticker.info
-                except:
-                    pass
+            ticker = yf.Ticker(symbol)
+            # 嘗試取得 info，若失敗則為空字典
+            try:
+                info = ticker.info
+            except:
+                info = {}
 
-            # --- 1. 基礎價格 (優先用參考資料，其次 yfinance 即時) ---
+            # --- 1. 基礎價格 ---
+            # 優先使用 yfinance 即時資料，再回退到參考資料
             close = np.nan
-            if ref_data is not None:
-                close = parse_float(ref_data.get('收盤'))
 
-            if (pd.isna(close) or close == 0):
-                close = info.get('currentPrice') or info.get('previousClose')
+            # 先嘗試從 yfinance info 取得
+            close = info.get('currentPrice') or info.get('previousClose')
 
+            # 若 info 沒有，嘗試從歷史資料取得
             if (pd.isna(close) or close == 0) and not history_data.empty:
                 try:
                     df_price = history_data[symbol] if len(stock_list) > 1 else history_data
-                    close = df_price['Close'].iloc[-1]
+                    valid_closes = df_price['Close'].dropna()
+                    if not valid_closes.empty:
+                        close = valid_closes.iloc[-1]
                 except:
                     pass
 
-            # --- 2. 估值指標 (優先用參考資料) ---
+            # 最後才使用參考資料（可能是舊的）
+            if (pd.isna(close) or close == 0) and ref_data is not None:
+                close = parse_float(ref_data.get('收盤'))
+
+            # --- 2. 估值指標 ---
             pe = np.nan
             pb = np.nan
             roe = np.nan
@@ -143,7 +198,6 @@ def fetch_stock_data(stock_list, ref_df=None):
                 pb = parse_float(ref_data.get('淨值比'))
                 roe = parse_float(ref_data.get('ROE'))
 
-            # 若參考資料無值，回退到 yfinance
             if pd.isna(pe):
                 pe = info.get('trailingPE', np.nan)
             if pd.isna(pb):
@@ -152,14 +206,12 @@ def fetch_stock_data(stock_list, ref_df=None):
                 roe_yf = info.get('returnOnEquity', np.nan)
                 roe = roe_yf * 100 if roe_yf else np.nan
 
-            # --- 3. 計算 20 日報酬率 (需用歷史股價) ---
+            # --- 3. 20 日報酬率 ---
             r_20d = np.nan
             if not history_data.empty:
                 try:
                     df_p = history_data[symbol] if len(stock_list) > 1 else history_data
-                    # 確保有足夠資料
                     if len(df_p) >= 20:
-                        # 取得最近收盤價 (若 yf info 沒抓到，用歷史資料最後一筆)
                         current_close = close if (close and not pd.isna(close)) else df_p['Close'].iloc[-1]
                         price_20d_ago = df_p['Close'].iloc[-20]
                         r_20d = (current_close - price_20d_ago) / price_20d_ago
@@ -167,10 +219,7 @@ def fetch_stock_data(stock_list, ref_df=None):
                     pass
 
             # --- 4. GVI 計算 ---
-            # GVI = (1/PB) * (1 + ROE)^5
-            # 注意: 這裡 ROE 若來自 CSV 是 34.66 (代表 34.66%)，計算時要除以 100
             roe_ratio = roe / 100 if (roe and roe > 1) else roe
-
             gvi = np.nan
             if pb and pb > 0 and roe_ratio and roe_ratio > 0:
                 gvi = (1/pb * (1+roe_ratio)**5)
@@ -181,7 +230,6 @@ def fetch_stock_data(stock_list, ref_df=None):
             div_yield = np.nan
             if ref_data is not None:
                 raw_yield = parse_float(ref_data.get('殖利率'))
-                # 修正: CSV 中的殖利率似乎是放大 100 倍的數值 (例如 148.0 代表 1.48%)
                 if not pd.isna(raw_yield):
                     div_yield = raw_yield / 100
 
@@ -189,16 +237,19 @@ def fetch_stock_data(stock_list, ref_df=None):
                 div_rate = info.get('dividendRate', 0)
                 div_yield = (div_rate / close * 100) if (div_rate and close) else 0
 
-            # --- 6. 獲利能力 (毛利率, 營業利益率, 稅後淨利率) ---
+            # --- 6. 獲利能力 (毛利率, 營業利益率, 稅後淨利率, 稅前淨利率) ---
             gross_margin = np.nan
             op_margin = np.nan
             net_margin = np.nan
+            pretax_margin = np.nan
+            revenue_growth = np.nan
 
             if ref_data is not None:
                 gross_margin = parse_float(ref_data.get('毛利率'))
                 op_margin = parse_float(ref_data.get('營業利益率'))
                 net_margin = parse_float(ref_data.get('稅後淨利率'))
 
+            # 從 Info 獲取基礎數據
             if pd.isna(gross_margin):
                 gross_margin = info.get('grossMargins', 0) * 100
             if pd.isna(op_margin):
@@ -206,13 +257,35 @@ def fetch_stock_data(stock_list, ref_df=None):
             if pd.isna(net_margin):
                 net_margin = info.get('profitMargins', 0) * 100
 
-            # 本業比例 (營業利益率 / 稅後淨利率)
-            core_ratio = np.nan
-            if not pd.isna(op_margin) and not pd.isna(net_margin) and net_margin > 0:
-                core_ratio = (op_margin / net_margin * 100)
+            revenue_growth = info.get('revenueGrowth', 0) * 100
 
-            # --- 7. PE 區間 ---
+            # 嘗試從 Financials 計算 稅前淨利率 & 補強其他數據
+            try:
+                fin = ticker.financials
+                if not fin.empty:
+                    # 稅前淨利率 = Pretax Income / Total Revenue
+                    if 'Pretax Income' in fin.index and 'Total Revenue' in fin.index:
+                        pretax_income = fin.loc['Pretax Income'].iloc[0]
+                        total_revenue = fin.loc['Total Revenue'].iloc[0]
+                        if total_revenue != 0:
+                            pretax_margin = (pretax_income / total_revenue) * 100
+            except:
+                pass
+
+            # 本業比例 (營業利益率 / 稅前淨利率)
+            core_ratio = np.nan
+            denominator = pretax_margin if (pretax_margin and not pd.isna(pretax_margin)) else net_margin
+
+            if not pd.isna(op_margin) and not pd.isna(denominator) and denominator > 0:
+                core_ratio = (op_margin / denominator * 100)
+
+            # --- 7. PE 區間 & 5年最低 PE ---
             pe_range_str = "-"
+            pe_min_5y = np.nan
+
+            # 計算 5年最低 PE
+            pe_min_5y = calculate_min_pe_5y(ticker, history_data, symbol)
+
             if ref_data is not None and '本益比區間' in ref_data:
                 pe_range_str = str(ref_data['本益比區間'])
 
@@ -248,10 +321,33 @@ def fetch_stock_data(stock_list, ref_df=None):
                 vol_shares = info.get('volume', 0)
                 vol_lots = int(vol_shares / 1000) if vol_shares else 0
 
+            # --- 9. 收盤日期 ---
+            close_date = ""
+            if not history_data.empty:
+                try:
+                    df_p = history_data[symbol] if len(stock_list) > 1 else history_data
+                    if not df_p.empty:
+                        # 找出實際有收盤價的最後一筆日期
+                        # 過濾掉 NaN 值，取最後一筆有效資料的日期
+                        valid_closes = df_p['Close'].dropna()
+                        if not valid_closes.empty:
+                            last_date = valid_closes.index[-1]
+                            close_date = last_date.strftime('%Y-%m-%d')
+                except:
+                    pass
+
+            if not close_date and info.get('regularMarketTime'):
+                try:
+                    ts = info.get('regularMarketTime')
+                    close_date = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d')
+                except:
+                    pass
+
             result_list.append({
                 '證券代號': symbol,
                 '證券名稱': get_tw_name(symbol),
                 '收盤': close,
+                '收盤日期': close_date,
                 'GVI指標': gvi,
                 '20日報酬率': r_20d,
                 '殖利率': div_yield,
@@ -263,11 +359,12 @@ def fetch_stock_data(stock_list, ref_df=None):
                 '毛利率': gross_margin,
                 '營業利益率': op_margin,
                 '稅後淨利率': net_margin,
+                '稅前淨利率': pretax_margin,
                 '本業比例': core_ratio,
+                '營收成長率': revenue_growth,
+                '近五年最低本益比': pe_min_5y,
                 '本益比區間': pe_range_str
             })
-
-            # time.sleep(0.1)
 
         except Exception as e:
             print(f"Error {symbol}: {e}")
@@ -300,25 +397,44 @@ def calculate_scores(df):
 
 
 def format_and_export(df):
+    # 找出最常見的收盤日期 (Mode)
+    date_str = ""
+    if '收盤日期' in df.columns and not df['收盤日期'].dropna().empty:
+        try:
+            date_str = df['收盤日期'].mode()[0]
+        except:
+            pass
+
+    # 決定收盤欄位名稱
+    close_col_name = f'收盤 ({date_str})' if date_str else '收盤'
+
+    # 若有日期，將 '收盤' 欄位重新命名
+    if date_str and '收盤' in df.columns:
+        df = df.rename(columns={'收盤': close_col_name})
+
     cols = [
-        '證券代號', '證券名稱', '收盤', 'GVI指標', '三因子評分', '20日報酬率',
-        '殖利率', '本益比', '淨值比', 'ROE',
-        '外資持股(%)', '張數', '毛利率', '營業利益率', '稅後淨利率', '本業比例', '本益比區間'
+        '證券代號', '證券名稱', close_col_name, 'GVI指標', '三因子評分', '20日報酬率',
+        '殖利率', '本益比', '近五年最低本益比', '淨值比', 'ROE',
+        '外資持股(%)', '張數', '毛利率', '營業利益率', '稅後淨利率', '稅前淨利率', '本業比例', '營收成長率', '本益比區間'
     ]
 
+    # 只保留存在的欄位
     df = df[[c for c in cols if c in df.columns]].copy()
 
     # 格式化
     def fmt_f2(x): return f"{x:.2f}" if isinstance(x, (int, float)) and not pd.isna(x) else "-"
     def fmt_pct(x): return f"{x:.2f}%" if isinstance(x, (int, float)) and not pd.isna(x) else "-"
 
-    df['收盤'] = df['收盤'].apply(lambda x: f"{x:.1f}" if isinstance(x, (int, float)) and not pd.isna(x) else "-")
+    if close_col_name in df.columns:
+        df[close_col_name] = df[close_col_name].apply(lambda x: f"{x:.1f}" if isinstance(x, (int, float)) and not pd.isna(x) else "-")
+
     df['GVI指標'] = df['GVI指標'].apply(fmt_f2)
     df['三因子評分'] = df['三因子評分'].apply(fmt_f2)
     df['淨值比'] = df['淨值比'].apply(fmt_f2)
     df['本益比'] = df['本益比'].apply(fmt_f2)
+    df['近五年最低本益比'] = df['近五年最低本益比'].apply(fmt_f2)
 
-    pct_cols = ['20日報酬率', '殖利率', 'ROE', '外資持股(%)', '毛利率', '營業利益率', '稅後淨利率', '本業比例']
+    pct_cols = ['20日報酬率', '殖利率', 'ROE', '外資持股(%)', '毛利率', '營業利益率', '稅後淨利率', '稅前淨利率', '本業比例', '營收成長率']
     for c in pct_cols:
         if c in df.columns:
             df[c] = df[c].apply(fmt_pct)
