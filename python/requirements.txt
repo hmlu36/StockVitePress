@@ -14,3 +14,4 @@ playwright
 EasyOCR
 yfinance
 twstock
+lxml
