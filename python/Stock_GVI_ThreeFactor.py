@@ -140,14 +140,107 @@ def calculate_min_pe_5y(ticker, history_data, symbol):
         return np.nan
 
 
+def calculate_volume_analysis(history_data, symbol, stock_list):
+    """
+    計算成交量相關指標，用於偵測「低檔盤整後成交量大增」的技術型態
+
+    回傳:
+    - vol_ma5: 5日成交量移動平均
+    - vol_ma20: 20日成交量移動平均
+    - vol_ratio: 當日成交量 / 20日均量 (成交量放大倍數)
+    - vol_breakout: 是否發生成交量突破 (當日成交量 > 均量2倍)
+    - low_consolidation: 是否在低檔盤整 (股價接近近20日低點 + 最近均量萎縮)
+    - vol_signal: 綜合訊號 ("量能放大突破", "低檔盤整", "正常", 等)
+    """
+    result = {
+        'vol_ma5': np.nan,
+        'vol_ma20': np.nan,
+        'vol_ratio': np.nan,
+        'vol_breakout': False,
+        'low_consolidation': False,
+        'vol_signal': '-'
+    }
+
+    try:
+        if history_data.empty:
+            return result
+
+        # 取得股價歷史
+        df_p = history_data[symbol] if len(stock_list) > 1 else history_data
+
+        if df_p.empty or len(df_p) < 20:
+            return result
+
+        # 取得成交量數據
+        if 'Volume' not in df_p.columns:
+            return result
+
+        volumes = df_p['Volume'].dropna()
+        closes = df_p['Close'].dropna()
+
+        if len(volumes) < 20 or len(closes) < 20:
+            return result
+
+        # 計算均量
+        vol_ma5 = volumes.tail(5).mean()
+        vol_ma20 = volumes.tail(20).mean()
+        current_vol = volumes.iloc[-1]
+
+        result['vol_ma5'] = vol_ma5
+        result['vol_ma20'] = vol_ma20
+
+        # 計算成交量放大倍數
+        if vol_ma20 > 0:
+            result['vol_ratio'] = current_vol / vol_ma20
+
+        # 判斷成交量突破 (當日成交量 > 均量2倍)
+        if vol_ma20 > 0 and current_vol > vol_ma20 * 2:
+            result['vol_breakout'] = True
+
+        # 判斷低檔盤整
+        # 條件1: 股價接近近20日低點 (在低點5%範圍內)
+        # 條件2: 最近5日均量 < 20日均量 (量能萎縮)
+        low_20d = closes.tail(20).min()
+        current_close = closes.iloc[-1]
+        high_20d = closes.tail(20).max()
+
+        price_near_low = (current_close - low_20d) / low_20d < 0.05 if low_20d > 0 else False
+        # 另一種判斷: 股價在近20日震幅的下半部
+        price_in_lower_half = (current_close - low_20d) < (high_20d - low_20d) * 0.4 if high_20d > low_20d else False
+
+        vol_contraction = vol_ma5 < vol_ma20 * 0.8  # 近5日均量 < 20日均量的80%
+
+        if (price_near_low or price_in_lower_half) and vol_contraction:
+            result['low_consolidation'] = True
+
+        # 綜合訊號判斷
+        if result['low_consolidation'] and result['vol_breakout']:
+            result['vol_signal'] = '★低檔量增突破'  # 最佳買點訊號
+        elif result['vol_breakout']:
+            result['vol_signal'] = '量能放大'
+        elif result['low_consolidation']:
+            result['vol_signal'] = '低檔盤整'
+        elif result['vol_ratio'] and result['vol_ratio'] > 1.5:
+            result['vol_signal'] = '量能增加'
+        elif result['vol_ratio'] and result['vol_ratio'] < 0.5:
+            result['vol_signal'] = '量能萎縮'
+        else:
+            result['vol_signal'] = '正常'
+
+    except Exception as e:
+        pass
+
+    return result
+
+
 def fetch_stock_data(stock_list, ref_df=None):
     print(f"正在抓取 {len(stock_list)} 檔股票資料...")
     result_list = []
 
-    # 批量下載歷史股價（擴展至 5 年以計算最低本益比）
+    # 批量下載歷史股價（擴展至 3 年以計算最低本益比）
     try:
-        # 注意: 5y 資料量較大，若股票多可能會慢。
-        history_data = yf.download(stock_list, period="5y", group_by='ticker', threads=True)
+        # 注意: 3y 資料量較大，若股票多可能會慢。
+        history_data = yf.download(stock_list, period="3y", group_by='ticker', threads=True)
     except:
         history_data = pd.DataFrame()
 
@@ -343,6 +436,90 @@ def fetch_stock_data(stock_list, ref_df=None):
                 except:
                     pass
 
+            # --- 10. 財務健康指標 (現金流穩定、低負債) ---
+            # 自由現金流 (Free Cash Flow)
+            free_cash_flow = np.nan
+            # 營業現金流 (Operating Cash Flow)
+            operating_cash_flow = np.nan
+            # 負債比率 (Debt Ratio) = 總負債 / 總資產
+            debt_ratio = np.nan
+            # 流動比率 (Current Ratio) = 流動資產 / 流動負債
+            current_ratio = np.nan
+            # 速動比率 (Quick Ratio) = (流動資產-存貨) / 流動負債
+            quick_ratio = np.nan
+            # 現金流量比 (Cash Flow Ratio) = 營業現金流 / 稅後淨利
+            cash_flow_ratio = np.nan
+            # 產業類別
+            sector = info.get('sector', '')
+            industry = info.get('industry', '')
+
+            # 從 yfinance 抓取現金流與資產負債表資料
+            try:
+                # 現金流量表
+                cf = ticker.cashflow
+                if not cf.empty:
+                    if 'Free Cash Flow' in cf.index:
+                        free_cash_flow = cf.loc['Free Cash Flow'].iloc[0]
+                    if 'Operating Cash Flow' in cf.index:
+                        operating_cash_flow = cf.loc['Operating Cash Flow'].iloc[0]
+
+                # 資產負債表
+                bs = ticker.balance_sheet
+                if not bs.empty:
+                    total_assets = bs.loc['Total Assets'].iloc[0] if 'Total Assets' in bs.index else np.nan
+                    total_debt = bs.loc['Total Debt'].iloc[0] if 'Total Debt' in bs.index else np.nan
+                    total_liab = bs.loc['Total Liabilities Net Minority Interest'].iloc[0] if 'Total Liabilities Net Minority Interest' in bs.index else np.nan
+
+                    current_assets = bs.loc['Current Assets'].iloc[0] if 'Current Assets' in bs.index else np.nan
+                    current_liab = bs.loc['Current Liabilities'].iloc[0] if 'Current Liabilities' in bs.index else np.nan
+                    inventory = bs.loc['Inventory'].iloc[0] if 'Inventory' in bs.index else 0
+
+                    # 計算負債比率
+                    if not pd.isna(total_liab) and not pd.isna(total_assets) and total_assets > 0:
+                        debt_ratio = (total_liab / total_assets) * 100
+
+                    # 計算流動比率
+                    if not pd.isna(current_assets) and not pd.isna(current_liab) and current_liab > 0:
+                        current_ratio = (current_assets / current_liab) * 100
+
+                    # 計算速動比率
+                    if not pd.isna(current_assets) and not pd.isna(current_liab) and current_liab > 0:
+                        quick_assets = current_assets - (inventory if not pd.isna(inventory) else 0)
+                        quick_ratio = (quick_assets / current_liab) * 100
+
+                # 計算現金流量比 (營業現金流 / 稅後淨利)
+                income_stmt = ticker.financials
+                if not income_stmt.empty and not pd.isna(operating_cash_flow):
+                    net_income = income_stmt.loc['Net Income'].iloc[0] if 'Net Income' in income_stmt.index else np.nan
+                    if not pd.isna(net_income) and net_income > 0:
+                        cash_flow_ratio = (operating_cash_flow / net_income) * 100
+
+            except Exception as e:
+                pass
+
+            # 從 info 補充（若上面沒抓到）
+            if pd.isna(debt_ratio):
+                debt_to_equity = info.get('debtToEquity', np.nan)
+                if not pd.isna(debt_to_equity):
+                    # 負債權益比轉負債比率: D/E -> D/(D+E) = 1/(1+E/D)
+                    debt_ratio = (debt_to_equity / (100 + debt_to_equity)) * 100
+
+            if pd.isna(current_ratio):
+                current_ratio = info.get('currentRatio', np.nan)
+                if not pd.isna(current_ratio):
+                    current_ratio = current_ratio * 100
+
+            if pd.isna(quick_ratio):
+                quick_ratio = info.get('quickRatio', np.nan)
+                if not pd.isna(quick_ratio):
+                    quick_ratio = quick_ratio * 100
+
+            if pd.isna(free_cash_flow):
+                free_cash_flow = info.get('freeCashflow', np.nan)
+
+            # --- 11. 成交量分析 (低檔盤整+量能放大) ---
+            vol_analysis = calculate_volume_analysis(history_data, symbol, stock_list)
+
             result_list.append({
                 '證券代號': symbol,
                 '證券名稱': get_tw_name(symbol),
@@ -363,7 +540,20 @@ def fetch_stock_data(stock_list, ref_df=None):
                 '本業比例': core_ratio,
                 '營收成長率': revenue_growth,
                 '近五年最低本益比': pe_min_5y,
-                '本益比區間': pe_range_str
+                '本益比區間': pe_range_str,
+                # --- 新增: 財務健康指標 ---
+                '自由現金流': free_cash_flow,
+                '負債比率': debt_ratio,
+                '流動比率': current_ratio,
+                '速動比率': quick_ratio,
+                '現金流量比': cash_flow_ratio,
+                '產業': sector,
+                '細產業': industry,
+                # --- 新增: 成交量分析 ---
+                '5日均量': vol_analysis['vol_ma5'],
+                '20日均量': vol_analysis['vol_ma20'],
+                '量能倍數': vol_analysis['vol_ratio'],
+                '量能訊號': vol_analysis['vol_signal']
             })
 
         except Exception as e:
@@ -396,6 +586,149 @@ def calculate_scores(df):
     return df_valid
 
 
+def calculate_financial_health_score(df):
+    """
+    計算財務健康評分
+    評分邏輯：
+    - 現金流正向 (+20分): 自由現金流 > 0
+    - 低負債 (+20分): 負債比率 < 50%
+    - 高流動性 (+15分): 流動比率 > 150%
+    - 本業強健 (+15分): 本業比例 > 60%
+    - 獲利穩定 (+15分): 現金流量比 > 80%
+    - 本益比合理 (+15分): PE < 15 或 PE < 近5年最低PE
+    """
+    df = df.copy()
+
+    # 確保數值型態
+    health_cols = ['自由現金流', '負債比率', '流動比率', '本業比例', '現金流量比', '本益比', '近五年最低本益比']
+    for col in health_cols:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+
+    # 初始化評分
+    df['財務健康評分'] = 0.0
+
+    # 1. 現金流正向 (+20分)
+    if '自由現金流' in df.columns:
+        df.loc[df['自由現金流'] > 0, '財務健康評分'] += 20
+
+    # 2. 低負債 (+20分): 負債比率 < 50%
+    if '負債比率' in df.columns:
+        df.loc[df['負債比率'] < 50, '財務健康評分'] += 20
+
+    # 3. 高流動性 (+15分): 流動比率 > 150%
+    if '流動比率' in df.columns:
+        df.loc[df['流動比率'] > 150, '財務健康評分'] += 15
+
+    # 4. 本業強健 (+15分): 本業比例 > 60%
+    if '本業比例' in df.columns:
+        df.loc[df['本業比例'] > 60, '財務健康評分'] += 15
+
+    # 5. 獲利穩定 (+15分): 現金流量比 > 80%
+    if '現金流量比' in df.columns:
+        df.loc[df['現金流量比'] > 80, '財務健康評分'] += 15
+
+    # 6. 本益比合理 (+15分): PE < 15 或 PE < 近5年最低PE
+    if '本益比' in df.columns:
+        pe_reasonable = (df['本益比'] < 15) & (df['本益比'] > 0)
+        if '近五年最低本益比' in df.columns:
+            pe_undervalued = (df['本益比'] < df['近五年最低本益比']) & (df['本益比'] > 0)
+            df.loc[pe_reasonable | pe_undervalued, '財務健康評分'] += 15
+        else:
+            df.loc[pe_reasonable, '財務健康評分'] += 15
+
+    return df
+
+
+def filter_quality_stocks(df, strict=False):
+    """
+    篩選高品質股票 (現金流穩定、低負債、真正賺錢)
+
+    篩選條件 (寬鬆模式):
+    - 本益比 < 20 (避開高本益比夢想股)
+    - 負債比率 < 60%
+    - 本業比例 > 50%
+
+    篩選條件 (嚴格模式 strict=True):
+    - 本益比 < 15
+    - 負債比率 < 50%
+    - 流動比率 > 150%
+    - 本業比例 > 60%
+    - 自由現金流 > 0
+    - ROE > 10%
+    """
+    df = df.copy()
+
+    # 確保數值型態
+    filter_cols = ['本益比', '負債比率', '流動比率', '本業比例', '自由現金流', 'ROE']
+    for col in filter_cols:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+
+    # 建立篩選標籤欄位
+    df['通過品質篩選'] = True
+    df['排除原因'] = ''
+
+    if strict:
+        # 嚴格模式
+        # 1. 本益比 < 15
+        if '本益比' in df.columns:
+            fail_pe = (df['本益比'] >= 15) | (df['本益比'] <= 0)
+            df.loc[fail_pe, '通過品質篩選'] = False
+            df.loc[fail_pe, '排除原因'] += '高PE;'
+
+        # 2. 負債比率 < 50%
+        if '負債比率' in df.columns:
+            fail_debt = df['負債比率'] >= 50
+            df.loc[fail_debt, '通過品質篩選'] = False
+            df.loc[fail_debt, '排除原因'] += '高負債;'
+
+        # 3. 流動比率 > 150%
+        if '流動比率' in df.columns:
+            fail_current = df['流動比率'] <= 150
+            df.loc[fail_current, '通過品質篩選'] = False
+            df.loc[fail_current, '排除原因'] += '低流動;'
+
+        # 4. 本業比例 > 60%
+        if '本業比例' in df.columns:
+            fail_core = df['本業比例'] <= 60
+            df.loc[fail_core, '通過品質篩選'] = False
+            df.loc[fail_core, '排除原因'] += '低本業;'
+
+        # 5. 自由現金流 > 0
+        if '自由現金流' in df.columns:
+            fail_fcf = df['自由現金流'] <= 0
+            df.loc[fail_fcf, '通過品質篩選'] = False
+            df.loc[fail_fcf, '排除原因'] += '負現金流;'
+
+        # 6. ROE > 10%
+        if 'ROE' in df.columns:
+            fail_roe = df['ROE'] <= 10
+            df.loc[fail_roe, '通過品質篩選'] = False
+            df.loc[fail_roe, '排除原因'] += '低ROE;'
+    else:
+        # 寬鬆模式
+        # 1. 本益比 < 20 (避開高本益比夢想股)
+        if '本益比' in df.columns:
+            fail_pe = (df['本益比'] >= 20) | (df['本益比'] <= 0)
+            df.loc[fail_pe, '通過品質篩選'] = False
+            df.loc[fail_pe, '排除原因'] += '高PE;'
+
+        # 2. 負債比率 < 60%
+        if '負債比率' in df.columns:
+            fail_debt = df['負債比率'] >= 60
+            df.loc[fail_debt, '通過品質篩選'] = False
+            df.loc[fail_debt, '排除原因'] += '高負債;'
+
+        # 3. 本業比例 > 50%
+        if '本業比例' in df.columns:
+            fail_core = df['本業比例'] <= 50
+            df.loc[fail_core, '通過品質篩選'] = False
+            df.loc[fail_core, '排除原因'] += '低本業;'
+
+    return df
+
+
 def format_and_export(df):
     # 找出最常見的收盤日期 (Mode)
     date_str = ""
@@ -413,9 +746,14 @@ def format_and_export(df):
         df = df.rename(columns={'收盤': close_col_name})
 
     cols = [
-        '證券代號', '證券名稱', close_col_name, 'GVI指標', '三因子評分', '20日報酬率',
+        '證券代號', '證券名稱', close_col_name, 'GVI指標', '三因子評分', '財務健康評分', '通過品質篩選',
+        '20日報酬率',
+        # --- 新增: 成交量分析欄位 ---
+        '5日均量', '20日均量', '量能倍數', '量能訊號',
         '殖利率', '本益比', '近五年最低本益比', '淨值比', 'ROE',
-        '外資持股(%)', '張數', '毛利率', '營業利益率', '稅後淨利率', '稅前淨利率', '本業比例', '營收成長率', '本益比區間'
+        '外資持股(%)', '張數', '毛利率', '營業利益率', '稅後淨利率', '稅前淨利率', '本業比例', '營收成長率',
+        '自由現金流', '負債比率', '流動比率', '速動比率', '現金流量比',
+        '本益比區間', '產業', '細產業', '排除原因'
     ]
 
     # 只保留存在的欄位
@@ -425,19 +763,53 @@ def format_and_export(df):
     def fmt_f2(x): return f"{x:.2f}" if isinstance(x, (int, float)) and not pd.isna(x) else "-"
     def fmt_pct(x): return f"{x:.2f}%" if isinstance(x, (int, float)) and not pd.isna(x) else "-"
 
+    def fmt_cash(x):
+        if pd.isna(x) or not isinstance(x, (int, float)):
+            return "-"
+        # 以億為單位顯示
+        return f"{x/1e8:.1f}億" if abs(x) >= 1e8 else f"{x/1e6:.1f}百萬"
+
+    def fmt_volume(x):
+        """將成交量(股)轉為張數顯示"""
+        if pd.isna(x) or not isinstance(x, (int, float)):
+            return "-"
+        lots = x / 1000  # 1張 = 1000股
+        if lots >= 10000:
+            return f"{lots/10000:.1f}萬張"
+        elif lots >= 1000:
+            return f"{lots/1000:.1f}千張"
+        else:
+            return f"{lots:.0f}張"
+
     if close_col_name in df.columns:
         df[close_col_name] = df[close_col_name].apply(lambda x: f"{x:.1f}" if isinstance(x, (int, float)) and not pd.isna(x) else "-")
 
     df['GVI指標'] = df['GVI指標'].apply(fmt_f2)
-    df['三因子評分'] = df['三因子評分'].apply(fmt_f2)
+    if '三因子評分' in df.columns:
+        df['三因子評分'] = df['三因子評分'].apply(fmt_f2)
+    if '財務健康評分' in df.columns:
+        df['財務健康評分'] = df['財務健康評分'].apply(fmt_f2)
     df['淨值比'] = df['淨值比'].apply(fmt_f2)
     df['本益比'] = df['本益比'].apply(fmt_f2)
     df['近五年最低本益比'] = df['近五年最低本益比'].apply(fmt_f2)
 
-    pct_cols = ['20日報酬率', '殖利率', 'ROE', '外資持股(%)', '毛利率', '營業利益率', '稅後淨利率', '稅前淨利率', '本業比例', '營收成長率']
+    # 格式化量能倍數
+    if '量能倍數' in df.columns:
+        df['量能倍數'] = df['量能倍數'].apply(lambda x: f"{x:.2f}x" if isinstance(x, (int, float)) and not pd.isna(x) else "-")
+
+    # 格式化均量
+    if '5日均量' in df.columns:
+        df['5日均量'] = df['5日均量'].apply(fmt_volume)
+    if '20日均量' in df.columns:
+        df['20日均量'] = df['20日均量'].apply(fmt_volume)
+
+    pct_cols = ['20日報酬率', '殖利率', 'ROE', '外資持股(%)', '毛利率', '營業利益率', '稅後淨利率', '稅前淨利率', '本業比例', '營收成長率', '負債比率', '流動比率', '速動比率', '現金流量比']
     for c in pct_cols:
         if c in df.columns:
             df[c] = df[c].apply(fmt_pct)
+
+    if '自由現金流' in df.columns:
+        df['自由現金流'] = df['自由現金流'].apply(fmt_cash)
 
     df['張數'] = df['張數'].apply(lambda x: f"{int(x):,}" if isinstance(x, (int, float)) and not pd.isna(x) else "-")
 
@@ -453,14 +825,31 @@ if __name__ == "__main__":
     raw_df = fetch_stock_data(my_stocks, ref_df)
 
     if not raw_df.empty:
+        # 1. 計算三因子評分
         scored_df = calculate_scores(raw_df)
+
+        # 2. 計算財務健康評分
+        scored_df = calculate_financial_health_score(scored_df)
+
+        # 3. 品質篩選 (可選擇 strict=True 為嚴格模式)
+        scored_df = filter_quality_stocks(scored_df, strict=True)
+
+        # 4. 格式化輸出
         final_df = format_and_export(scored_df)
 
-        # 依三因子評分排序
-        if '三因子評分' in final_df.columns:
+        # 依財務健康評分 + 三因子評分排序
+        if '財務健康評分' in final_df.columns:
+            final_df = final_df.sort_values(
+                by=['通過品質篩選', '財務健康評分', '三因子評分'],
+                ascending=[False, False, False]
+            )
+        elif '三因子評分' in final_df.columns:
             final_df = final_df.sort_values('三因子評分', ascending=False)
 
-        print(final_df.head(20).to_string(index=False))
+        # 顯示通過篩選的股票
+        passed_df = final_df[final_df['通過品質篩選'] == True] if '通過品質篩選' in final_df.columns else final_df
+        print("=== 通過品質篩選的股票 ===")
+        print(passed_df.head(20).to_string(index=False))
 
         # 設定輸出路徑到 public 資料夾
         current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -470,8 +859,15 @@ if __name__ == "__main__":
         if not os.path.exists(public_dir):
             os.makedirs(public_dir)
 
+        # 輸出完整清單
         output_path = os.path.join(public_dir, 'Stock_GVI_ThreeFactor.csv')
         final_df.to_csv(output_path, index=False, encoding='utf-8-sig')
-        print(f"\n已輸出至 {output_path}")
+        print(f"\n已輸出完整清單至 {output_path}")
+
+        # 輸出通過篩選的清單
+        if '通過品質篩選' in final_df.columns:
+            quality_output_path = os.path.join(public_dir, 'Stock_Quality_Filtered.csv')
+            passed_df.to_csv(quality_output_path, index=False, encoding='utf-8-sig')
+            print(f"已輸出品質篩選清單至 {quality_output_path} (共 {len(passed_df)} 檔)")
     else:
         print("查無資料")
