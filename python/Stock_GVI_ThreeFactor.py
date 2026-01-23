@@ -240,7 +240,7 @@ def fetch_stock_data(stock_list, ref_df=None):
     # 批量下載歷史股價（擴展至 3 年以計算最低本益比）
     try:
         # 注意: 3y 資料量較大，若股票多可能會慢。
-        history_data = yf.download(stock_list, period="3y", group_by='ticker', threads=True)
+        history_data = yf.download(stock_list, period="3y", group_by='ticker', threads=True, auto_adjust=True)
     except:
         history_data = pd.DataFrame()
 

@@ -1,14 +1,19 @@
 <template>
   <div class="table-wrapper">
-    <div class="table-scroll-container">
-      <table v-if="data.length">
+    <!-- 載入狀態 -->
+    <div v-if="loading" class="loading">Loading...</div>
+    <div v-else-if="error" class="error">Error loading data</div>
+    
+    <!-- 單一表格結構 -->
+    <div v-else class="table-scroll-container">
+      <table class="sticky-table">
         <thead>
           <tr>
             <th 
               v-for="(header, index) in headers" 
               :key="index"
-              :class="{ 'sticky-col': index < 2 }"
-              :style="getStickyStyle(index)"
+              :class="{ 'sticky-col': index < fixedColumns, 'first-col': index === 0 }"
+              :style="getStickyStyle(index, true)"
             >
               {{ header }}
             </th>
@@ -21,7 +26,8 @@
               :key="cellIndex"
               :class="{ 
                 numeric: isNumeric(cell),
-                'sticky-col': cellIndex < 2
+                'sticky-col': cellIndex < fixedColumns,
+                'first-col': cellIndex === 0
               }"
               :style="getStickyStyle(cellIndex)"
             >
@@ -30,8 +36,6 @@
           </tr>
         </tbody>
       </table>
-      <div v-else-if="loading" class="loading">Loading...</div>
-      <div v-else class="error">Error loading data</div>
     </div>
   </div>
 </template>
@@ -44,6 +48,10 @@ export default {
     csvFilePath: {
       type: String,
       required: true
+    },
+    fixedColumns: {
+      type: Number,
+      default: 1
     }
   },
   data() {
@@ -52,11 +60,15 @@ export default {
       data: [],
       loading: true,
       error: false,
-      columnWidths: []
+      columnWidths: [] 
     };
   },
   mounted() {
     this.loadCsv();
+    window.addEventListener('resize', this.calculateColumnWidths);
+  },
+  beforeUnmount() {
+    window.removeEventListener('resize', this.calculateColumnWidths);
   },
   methods: {
     async loadCsv() {
@@ -65,9 +77,8 @@ export default {
         const BASE_URL = isProduction ? '/StockVitePress' : '';
         const csvPath = `${BASE_URL}/${this.csvFilePath}`;
         const response = await fetch(csvPath);
-        if (!response.ok) {
-          throw new Error('Network response was not ok');
-        }
+        if (!response.ok) throw new Error('Network response was not ok');
+        
         const csvText = await response.text();
         const parsed = Papa.parse(csvText, { header: true });
         this.headers = parsed.meta.fields;
@@ -88,48 +99,56 @@ export default {
     },
     calculateColumnWidths() {
       const table = this.$el.querySelector('table');
-      if (table) {
-        const firstRow = table.querySelector('thead tr');
-        if (firstRow) {
-          const cells = firstRow.querySelectorAll('th');
-          this.columnWidths = Array.from(cells).map(cell => cell.offsetWidth);
-        }
-      }
+      if (!table) return;
+      
+      // 計算前幾欄的寬度，用於計算 sticky 的 left 位置
+      const firstRowCells = table.querySelectorAll('thead th');
+      this.columnWidths = Array.from(firstRowCells).map(cell => cell.offsetWidth); // 用 offsetWidth 包含 border/padding
     },
-    getStickyStyle(index) {
-      if (index === 0) {
-        return {
-          left: '0px',
-          zIndex: 3
-        };
-      } else if (index === 1) {
-        const leftOffset = this.columnWidths[0] || 0;
-        return {
-          left: `${leftOffset}px`,
-          zIndex: 3
-        };
+    getStickyStyle(index, isHeader = false) {
+      if (index >= this.fixedColumns) return {};
+
+      // 計算 left 偏移量
+      let left = 0;
+      for (let i = 0; i < index; i++) {
+        left += this.columnWidths[i] || 0;
       }
-      return {};
-    },
+
+      const style = {
+        left: `${left}px`,
+        position: 'sticky',
+      };
+
+      // Z-Index 層級管理
+      if (isHeader) {
+        style.zIndex = 3; // 左上角 (Header + Sticky Col)
+      } else {
+        style.zIndex = 1; // Body 的 Sticky Col
+      }
+
+      return style;
+    }
   }
 };
 </script>
 
 <style scoped>
 .table-wrapper {
-  /* 設定固定高度，讓捲軸限制在容器內 */
-  height: calc(100vh - 160px);
-  display: flex;
-  flex-direction: column;
+  /* 確保外部容器有明確高度限制，這樣內部才能捲動 */
+  height: calc(100vh - 160px); 
   border: 1px solid var(--vp-c-divider);
   border-radius: 8px;
   overflow: hidden;
   background-color: var(--vp-c-bg);
+  display: flex;
+  flex-direction: column;
 }
 
 .table-scroll-container {
+  overflow: auto;
   flex: 1;
-  overflow: auto; /* 自動顯示垂直與水平捲軸 */
+  width: 100%;
+  height: 100%;
   position: relative;
   
   /* 美化捲軸 */
@@ -139,77 +158,82 @@ export default {
 
 .table-scroll-container::-webkit-scrollbar {
   width: 12px;
-  height: 12px; /* 恢復水平捲軸高度 */
+  height: 12px;
 }
-
 .table-scroll-container::-webkit-scrollbar-track {
   background: var(--vp-c-bg-soft);
 }
-
 .table-scroll-container::-webkit-scrollbar-thumb {
   background: var(--vp-c-divider);
   border-radius: 6px;
   border: 2px solid var(--vp-c-bg-soft);
 }
-
-.table-scroll-container::-webkit-scrollbar-thumb:hover {
-  background: var(--vp-c-text-3);
-}
-
-/* 表格角落的方塊（當雙向捲軸都出現時） */
 .table-scroll-container::-webkit-scrollbar-corner {
   background: var(--vp-c-bg-soft);
 }
 
-table {
-  border-collapse: separate;
+.sticky-table {
+  border-collapse: separate; 
   border-spacing: 0;
-  width: max-content;
   min-width: 100%;
+  width: max-content;
 }
 
-thead {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-}
-
-th {
-  padding: 12px 16px;
-  text-align: left;
-  font-weight: 600;
-  border-bottom: 2px solid var(--vp-c-divider);
+/* ----------- Header Sticky ----------- */
+.sticky-table thead th {
+  position: sticky !important; /* 強制生效 */
+  top: 0 !important;
+  z-index: 10; /* 提高 z-index */
   background-color: var(--vp-c-bg-soft);
-  white-space: nowrap;
-  position: sticky;
-  top: 0;
+  box-shadow: 0 1px 0 var(--vp-c-divider);
+  border-bottom: none; 
 }
 
-td {
-  padding: 10px 16px;
-  border-bottom: 1px solid var(--vp-c-divider-light);
+/* ----------- Column Sticky ----------- */
+.sticky-col {
+  position: sticky !important; /* 強制生效 */
+  left: 0; /* JS 會覆蓋這個，但預設給 0 */
+  z-index: 5;
+  background-color: var(--vp-c-bg-soft);
+  box-shadow: 1px 0 0 var(--vp-c-divider);
+  border-right: none !important;
+}
+
+/* Header 和 Sticky Col 交界處 (左上角) */
+.sticky-table thead th.sticky-col {
+  z-index: 20 !important; /* 最高層級 */
+  box-shadow: 1px 0 0 var(--vp-c-divider), 0 1px 0 var(--vp-c-divider);
+}
+
+/* 確保第一欄（若不是 sticky-col）也有基本樣式 */
+.sticky-table th, 
+.sticky-table td {
+  padding: 12px 16px;
   white-space: nowrap;
+  border-right: 1px solid var(--vp-c-divider-light);
+  border-bottom: 1px solid var(--vp-c-divider-light);
+  box-sizing: border-box;
+}
+
+.sticky-table td {
   background-color: var(--vp-c-bg);
 }
 
-/* 固定列樣式 */
-.sticky-col {
-  position: sticky !important;
-  background-color: var(--vp-c-bg-soft) !important;
-  box-shadow: 2px 0 4px rgba(0, 0, 0, 0.1);
+/* 固定欄在 tbody 裡的背景 */
+.sticky-table tbody td.sticky-col {
+  background-color: var(--vp-c-bg-soft);
 }
 
-thead .sticky-col {
-  z-index: 4 !important;
-  background-color: var(--vp-c-bg-soft) !important;
-}
-
-tbody tr:hover td {
+.sticky-table tbody tr:hover td {
   background-color: var(--vp-c-bg-mute);
 }
 
-tbody tr:hover .sticky-col {
-  background-color: var(--vp-c-bg-mute) !important;
+.sticky-table th:last-child,
+.sticky-table td:last-child {
+  border-right: none;
+}
+.sticky-table tbody tr:last-child td {
+  border-bottom: none;
 }
 
 .numeric {
@@ -218,8 +242,7 @@ tbody tr:hover .sticky-col {
 }
 
 .loading, .error {
-  padding: 20px;
-  text-align: center;
-  color: var(--vp-c-text-2);
+  padding: 20px; text-align: center; color: var(--vp-c-text-2);
+  height: 100%; display: flex; align-items: center; justify-content: center;
 }
 </style>

@@ -43,7 +43,7 @@ def get_daily_exchange_amount(day_count=1):
         except:
             continue
 
-    return result.sort_values(by="日期", axis=1, ascending=False).iloc[:, :day_count]
+    return result[sorted(result.columns, reverse=True)].iloc[:, :day_count]
 
 
 def fetch_investors_data(date):
@@ -71,7 +71,7 @@ def process_investors_data(json_data, amount_df, date_str):
 
     # 處理三個欄位並轉為億元單位
     columns_to_convert = ["買進金額", "賣出金額", "買賣差額"]
-    df[columns_to_convert] = df[columns_to_convert].applymap(lambda x: convert_to_billion(x))
+    df[columns_to_convert] = df[columns_to_convert].map(lambda x: convert_to_billion(x))
 
     # 替換外資及陸資名稱，移除「(不含外資自營商)」部分
     df.loc[df["單位名稱"] == "外資及陸資(不含外資自營商)", "單位名稱"] = "外資及陸資"
