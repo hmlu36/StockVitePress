@@ -30,7 +30,7 @@ jobs:
 
       - name: Execute Stock GVI ThreeFactor script
         run: |
-          python python/Stock_GVI_ThreeFactor.py
+          python python/Stock_Filter.py
             
       - name: Commit and Push changes
         run: |
