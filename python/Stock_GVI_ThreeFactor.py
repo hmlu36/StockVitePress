@@ -814,12 +814,10 @@ def evaluate_four_levels(df):
         if pd.isna(pe) or pe <= 0:
             return 'N/A'
 
-        is_cheap = False
-        if pe < 12:
-            is_cheap = True
-        elif not pd.isna(min_pe) and min_pe > 0 and pe < min_pe * 1.1:
-            is_cheap = True
-
+        # 判斷是否落在便宜區間：PE < 12 或接近近五年最低PE
+        is_cheap = (pe < 12) or (
+            not pd.isna(min_pe) and min_pe > 0 and pe < min_pe * 1.1
+        )
         if is_cheap:
             return '便宜'
 
@@ -858,6 +856,115 @@ def evaluate_four_levels(df):
     return df
 
 
+def evaluate_three_good_one_fair(df):
+    """
+    三好一公道選股術
+    三好：
+    1. ROE 夠高 (>= 12%)
+    2. 淨負債低 (或為淨現金)
+    3. EPS 成長為正
+    一公道：
+    4. 本益比合理 (<= 20)
+    """
+    df = df.copy()
+
+    target_cols = ['ROE', '淨負債', '淨負債比率', 'EPS成長率', '本益比']
+    for c in target_cols:
+        if c in df.columns:
+            df[c] = pd.to_numeric(df[c], errors='coerce')
+
+    roe_good = df['ROE'] >= 12
+    net_debt_good = (df.get('淨負債', pd.Series(0, index=df.index)) <= 0) | (df.get('淨負債比率', pd.Series(0, index=df.index)) <= 30)
+    eps_growth_good = df.get('EPS成長率', pd.Series(0, index=df.index)) > 0
+    pe_fair = (df['本益比'] > 0) & (df['本益比'] <= 20)
+
+    df['三好_ROE'] = roe_good.map({True: 'Pass', False: 'Fail'})
+    df['三好_淨負債'] = net_debt_good.map({True: 'Pass', False: 'Fail'})
+    df['三好_EPS成長'] = eps_growth_good.map({True: 'Pass', False: 'Fail'})
+    df['一公道_本益比'] = pe_fair.map({True: 'Pass', False: 'Fail'})
+
+    df['三好一公道分數'] = (
+        roe_good.astype(int) +
+        net_debt_good.astype(int) +
+        eps_growth_good.astype(int) +
+        pe_fair.astype(int)
+    ) * 25
+
+    def grade(score):
+        if score >= 100:
+            return '★三好一公道'
+        if score >= 75:
+            return '三好一公道(佳)'
+        if score >= 50:
+            return '觀察'
+        return '待加強'
+
+    df['三好一公道評等'] = df['三好一公道分數'].apply(grade)
+    return df
+
+
+def evaluate_choose_stock_criteria(df):
+    """
+    自定義選股條件評估 (基於 A/B/C/D 四大面向)
+    """
+    df = df.copy()
+
+    # 確保數值型態
+    cs_cols = [
+        '本益比', '近五年最低本益比', '殖利率', '營收成長率',
+        '毛利率', '營業利益率', '稅後淨利率', '稅前淨利率',
+        '本業比例', 'ROE', '資本額'
+    ]
+    for c in cs_cols:
+        if c in df.columns:
+            df[c] = pd.to_numeric(df[c], errors='coerce')
+
+    # A: 價值面
+    a1 = (df['本益比'] > 0) & (df['本益比'] < 15)
+    div_pct = df['殖利率'] * 100 if df['殖利率'].max(skipna=True) < 1 else df['殖利率']
+    a2 = div_pct > 5
+
+    df['CS_A1_本益比<15'] = a1.map({True: 'Pass', False: 'Fail'})
+    df['CS_A2_殖利率>5%'] = a2.map({True: 'Pass', False: 'Fail'})
+
+    # B: 本益比低估
+    b1 = (df['本益比'] > 0) & (df['本益比'] < 10)
+    b2 = (df['本益比'] > 0) & (df['本益比'] < df.get('近五年最低本益比', 0))
+
+    df['CS_B1_本益比<10'] = b1.map({True: 'Pass', False: 'Fail'})
+    df['CS_B2_低於五年最低PE'] = b2.map({True: 'Pass', False: 'Fail'})
+
+    # C: 本業獲利
+    c1 = df.get('營收成長率', pd.Series(0, index=df.index)) > 0
+    c2 = df['毛利率'] > 0
+    c3 = df['營業利益率'] > 0
+    c6 = df.get('本業比例', pd.Series(0, index=df.index)) > 60
+    c7 = df['ROE'] > 10
+
+    df['CS_C1_營收成長>0'] = c1.map({True: 'Pass', False: 'Fail'})
+    df['CS_C2_毛利率>0'] = c2.map({True: 'Pass', False: 'Fail'})
+    df['CS_C3_營業利益率>0'] = c3.map({True: 'Pass', False: 'Fail'})
+    df['CS_C6_本業比例>60%'] = c6.map({True: 'Pass', False: 'Fail'})
+    df['CS_C7_ROE>10'] = c7.map({True: 'Pass', False: 'Fail'})
+
+    # 綜合評分
+    df['CS_總得分'] = (a1.astype(int) + a2.astype(int) + b1.astype(int) + b2.astype(int) +
+                    c1.astype(int) + c2.astype(int) + c3.astype(int) + c6.astype(int) + c7.astype(int))
+
+    def cs_grade(s):
+        if s >= 8:
+            return '★極優'
+        if s >= 6:
+            return '優良'
+        if s >= 4:
+            return '中等'
+        return '待加強'
+
+    df['CS選股評等'] = df['CS_總得分'].apply(cs_grade)
+
+    return df
+
+
 def format_and_export(df):
     # 找出最常見的收盤日期 (Mode)
     date_str = ""
@@ -874,14 +981,20 @@ def format_and_export(df):
     if date_str and '收盤' in df.columns:
         df = df.rename(columns={'收盤': close_col_name})
 
+    # 重新排列欄位順序：將詳細條件 (Pass/Fail) 放在決策建議之後
     cols = [
-        '證券代號', '證券名稱', close_col_name, '決策建議', '四關卡_基本面', '估值狀態',
-        'L1_獲利能力', 'L2_財務安全', 'L3_成長動能',
-        'GVI指標', '三因子評分', '財務健康評分', '通過品質篩選',
-        '20日報酬率',
-        # --- 新增: 成交量分析欄位 ---
+        '證券代號', '證券名稱', close_col_name, '決策建議',
+        # --- 成交量分析 ---
         '5日均量', '20日均量', '量能倍數', '量能訊號',
-        '殖利率', '本益比', '近五年最低本益比', '淨值比', 'ROE',
+        # --- 詳細條件旗標 (Pass/Fail) ---
+        '三好_ROE', '三好_淨負債', '三好_EPS成長', '一公道_本益比',
+        'L1_獲利能力', 'L2_財務安全', 'L3_成長動能',
+        '通過品質篩選',
+        # --- 評等與總分 ---
+        '三好一公道評等', '三好一公道分數', '四關卡_基本面', '估值狀態', 'CS選股評等', 'CS_總得分',
+        'GVI指標', '三因子評分', '財務健康評分',
+        '20日報酬率',
+        '殖利率', '本益比', '近五年最低本益比', '淨值比', 'ROE', 'EPS成長率',
         '外資持股(%)', '張數', '毛利率', '營業利益率', '稅後淨利率', '稅前淨利率', '本業比例', '營收成長率', '淨利成長率',
         '自由現金流', '負債比率', '流動比率', '速動比率', '現金流量比',
         '本益比區間', '產業', '細產業', '排除原因'
@@ -897,14 +1010,12 @@ def format_and_export(df):
     def fmt_cash(x):
         if pd.isna(x) or not isinstance(x, (int, float)):
             return "-"
-        # 以億為單位顯示
         return f"{x/1e8:.1f}億" if abs(x) >= 1e8 else f"{x/1e6:.1f}百萬"
 
     def fmt_volume(x):
-        """將成交量(股)轉為張數顯示"""
         if pd.isna(x) or not isinstance(x, (int, float)):
             return "-"
-        lots = x / 1000  # 1張 = 1000股
+        lots = x / 1000
         if lots >= 10000:
             return f"{lots/10000:.1f}萬張"
         elif lots >= 1000:
@@ -916,32 +1027,31 @@ def format_and_export(df):
         df[close_col_name] = df[close_col_name].apply(lambda x: f"{x:.1f}" if isinstance(x, (int, float)) and not pd.isna(x) else "-")
 
     df['GVI指標'] = df['GVI指標'].apply(fmt_f2)
-    if '三因子評分' in df.columns:
-        df['三因子評分'] = df['三因子評分'].apply(fmt_f2)
-    if '財務健康評分' in df.columns:
-        df['財務健康評分'] = df['財務健康評分'].apply(fmt_f2)
-    df['淨值比'] = df['淨值比'].apply(fmt_f2)
-    df['本益比'] = df['本益比'].apply(fmt_f2)
-    df['近五年最低本益比'] = df['近五年最低本益比'].apply(fmt_f2)
+    for col in ['三因子評分', '財務健康評分', '淨值比', '本益比', '近五年最低本益比']:
+        if col in df.columns:
+            df[col] = df[col].apply(fmt_f2)
 
-    # 格式化量能倍數
+    if '三好一公道分數' in df.columns:
+        df['三好一公道分數'] = df['三好一公道分數'].apply(lambda x: f"{int(x)}" if isinstance(x, (int, float)) and not pd.isna(x) else "-")
+
+    if 'CS_總得分' in df.columns:
+        df['CS_總得分'] = df['CS_總得分'].apply(lambda x: f"{int(x)}" if isinstance(x, (int, float)) and not pd.isna(x) else "-")
+
     if '量能倍數' in df.columns:
         df['量能倍數'] = df['量能倍數'].apply(lambda x: f"{x:.2f}x" if isinstance(x, (int, float)) and not pd.isna(x) else "-")
 
-    # 格式化均量
     if '5日均量' in df.columns:
         df['5日均量'] = df['5日均量'].apply(fmt_volume)
     if '20日均量' in df.columns:
         df['20日均量'] = df['20日均量'].apply(fmt_volume)
 
-    pct_cols = ['20日報酬率', '殖利率', 'ROE', '外資持股(%)', '毛利率', '營業利益率', '稅後淨利率', '稅前淨利率', '本業比例', '營收成長率', '淨利成長率', '負債比率', '流動比率', '速動比率', '現金流量比']
+    pct_cols = ['20日報酬率', '殖利率', 'ROE', 'EPS成長率', '外資持股(%)', '毛利率', '營業利益率', '稅後淨利率', '稅前淨利率', '本業比例', '營收成長率', '淨利成長率', '負債比率', '流動比率', '速動比率', '現金流量比']
     for c in pct_cols:
         if c in df.columns:
             df[c] = df[c].apply(fmt_pct)
 
     if '自由現金流' in df.columns:
         df['自由現金流'] = df['自由現金流'].apply(fmt_cash)
-
     df['張數'] = df['張數'].apply(lambda x: f"{int(x):,}" if isinstance(x, (int, float)) and not pd.isna(x) else "-")
 
     return df
@@ -949,59 +1059,49 @@ def format_and_export(df):
 
 if __name__ == "__main__":
     my_stocks = get_stock_list()
-
-    # 讀取參考資料
     ref_df = load_reference_data()
-
     raw_df = fetch_stock_data(my_stocks, ref_df)
 
     if not raw_df.empty:
-        # 1. 計算三因子評分
-        scored_df = calculate_scores(raw_df)
+        # 1. 計算評分指標
+        df = calculate_scores(raw_df)
+        df = calculate_financial_health_score(df)
+        df = evaluate_four_levels(df)
+        df = evaluate_three_good_one_fair(df)
+        df = evaluate_choose_stock_criteria(df)
+        df = filter_quality_stocks(df, strict=True)
 
-        # 2. 計算財務健康評分
-        scored_df = calculate_financial_health_score(scored_df)
+        # 2. 格式化輸出
+        final_df = format_and_export(df)
 
-        # 3. 四道關卡選股分析
-        scored_df = evaluate_four_levels(scored_df)
-
-        # 4. 品質篩選 (可選擇 strict=True 為嚴格模式)
-        scored_df = filter_quality_stocks(scored_df, strict=True)
-
-        # 5. 格式化輸出
-        final_df = format_and_export(scored_df)
-
-        # 依財務健康評分 + 三因子評分排序
+        # 3. 綜合排序
+        sort_by = []
+        ascending = []
+        if '三好一公道分數' in final_df.columns:
+            sort_by.append('三好一公道分數')
+            ascending.append(False)
+        if '四關卡_基本面' in final_df.columns:
+            sort_by.append('四關卡_基本面')
+            ascending.append(True)
         if '財務健康評分' in final_df.columns:
-            final_df = final_df.sort_values(
-                by=['四關卡_基本面', '通過品質篩選', '財務健康評分', '三因子評分'],
-                ascending=[True, False, False, False]
-            )
-        elif '三因子評分' in final_df.columns:
-            final_df = final_df.sort_values('三因子評分', ascending=False)
+            sort_by.append('財務健康評分')
+            ascending.append(False)
 
-        # 顯示通過篩選的股票
-        passed_df = final_df[final_df['通過品質篩選'] == True] if '通過品質篩選' in final_df.columns else final_df
-        print("=== 通過品質篩選的股票 ===")
-        print(passed_df.head(20).to_string(index=False))
+        if sort_by:
+            final_df = final_df.sort_values(by=sort_by, ascending=ascending)
 
-        # 設定輸出路徑到 public 資料夾
+        # 顯示預覽
+        print("=== 綜合排序預覽 (前20檔) ===")
+        print(final_df.head(20).to_string(index=False))
+
+        # 輸出路徑
         current_dir = os.path.dirname(os.path.abspath(__file__))
         public_dir = os.path.join(os.path.dirname(current_dir), 'public')
-
-        # 確保 public 資料夾存在
         if not os.path.exists(public_dir):
             os.makedirs(public_dir)
 
-        # 輸出完整清單
         output_path = os.path.join(public_dir, 'Stock_GVI_ThreeFactor.csv')
         final_df.to_csv(output_path, index=False, encoding='utf-8-sig')
         print(f"\n已輸出完整清單至 {output_path}")
-
-        # 輸出通過篩選的清單
-        if '通過品質篩選' in final_df.columns:
-            quality_output_path = os.path.join(public_dir, 'Stock_Quality_Filtered.csv')
-            passed_df.to_csv(quality_output_path, index=False, encoding='utf-8-sig')
-            print(f"已輸出品質篩選清單至 {quality_output_path} (共 {len(passed_df)} 檔)")
     else:
         print("查無資料")
