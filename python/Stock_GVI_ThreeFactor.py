@@ -275,6 +275,108 @@ def calculate_volume_analysis(history_data, symbol, stock_list):
     return result
 
 
+def check_five_trading_rules(df_p, info):
+    """
+    計算五大守則：
+    1. 漲破 7% 沒鎖漲停 → 走
+    2. 低開 3% 站不回紅 → 走
+    3. 連漲 3 天 → 先賣一半
+    4. 高檔爆量 → 不問理由走
+    5. 換手 <5% → 直接跳過
+    """
+    result = {
+        '漲破7沒鎖漲停': False,
+        '低開3站不回紅': False,
+        '連漲3天': False,
+        '高檔爆量': False,
+        '換手率小於5': False,
+        '換手率': np.nan,
+        '五大守則建議': '-'
+    }
+    
+    try:
+        if df_p is None or df_p.empty or len(df_p) < 4:
+            return result
+            
+        # 確保必要的欄位存在
+        if not all(col in df_p.columns for col in ['Close', 'High', 'Low', 'Open', 'Volume']):
+            return result
+            
+        today = df_p.iloc[-1]
+        yest = df_p.iloc[-2]
+        
+        c0 = pd.to_numeric(today['Close'], errors='coerce')
+        h0 = pd.to_numeric(today['High'], errors='coerce')
+        l0 = pd.to_numeric(today['Low'], errors='coerce')
+        o0 = pd.to_numeric(today['Open'], errors='coerce')
+        v0 = pd.to_numeric(today['Volume'], errors='coerce')
+        c1 = pd.to_numeric(yest['Close'], errors='coerce')
+        
+        if pd.isna(c0) or pd.isna(c1) or c1 == 0:
+            return result
+            
+        # 1. 漲破 7% 沒鎖漲停 → 走
+        high_pct = (h0 - c1) / c1
+        close_pct = (c0 - c1) / c1
+        # 若當天最高價漲幅 >= 7%，且收盤沒鎖死漲停 (抓9.5%以上視為漲停鎖死)
+        if high_pct >= 0.07 and close_pct < 0.095:
+            result['漲破7沒鎖漲停'] = True
+            
+        # 2. 低開 3% 站不回紅 → 走
+        open_pct = (o0 - c1) / c1
+        if open_pct <= -0.03 and close_pct <= 0:
+            result['低開3站不回紅'] = True
+            
+        # 3. 連漲 3 天 → 先賣一半
+        c2 = pd.to_numeric(df_p['Close'].iloc[-3], errors='coerce')
+        c3 = pd.to_numeric(df_p['Close'].iloc[-4], errors='coerce')
+        if pd.notna(c2) and pd.notna(c3):
+            if c0 > c1 and c1 > c2 and c2 > c3:
+                result['連漲3天'] = True
+                
+        # 4. 高檔爆量 → 不問理由走
+        if len(df_p) >= 20:
+            vol_ma20 = pd.to_numeric(df_p['Volume'].tail(20), errors='coerce').mean()
+            high_60 = pd.to_numeric(df_p['High'].tail(60), errors='coerce').max() if len(df_p) >= 60 else pd.to_numeric(df_p['High'], errors='coerce').max()
+            
+            # 高檔：收盤距離近60日高點在10%以內
+            is_high_price = (c0 >= high_60 * 0.90) if pd.notna(high_60) and high_60 > 0 else False
+            # 爆量：當天成交量 > 20日均量的兩倍
+            is_high_vol = (v0 >= vol_ma20 * 2) if pd.notna(vol_ma20) and vol_ma20 > 0 else False
+            
+            if is_high_price and is_high_vol:
+                result['高檔爆量'] = True
+                
+        # 5. 換手 <5% → 直接跳過
+        shares_out = info.get('sharesOutstanding')
+        if shares_out and shares_out > 0:
+            turnover = v0 / shares_out
+            result['換手率'] = turnover
+            if turnover < 0.05:
+                result['換手率小於5'] = True
+                
+        # 產生建議
+        suggestions = []
+        if result['換手率小於5']:
+            suggestions.append('跳過(換手<5%)')
+        if result['漲破7沒鎖漲停']:
+            suggestions.append('走(曾漲7%沒鎖)')
+        if result['低開3站不回紅']:
+            suggestions.append('走(低開不回紅)')
+        if result['高檔爆量']:
+            suggestions.append('走(高檔爆量)')
+        if result['連漲3天']:
+            suggestions.append('賣一半(連漲3日)')
+            
+        if suggestions:
+            result['五大守則建議'] = ' | '.join(suggestions)
+            
+    except Exception as e:
+        pass
+        
+    return result
+
+
 def fetch_stock_data(stock_list, ref_df=None):
     print(f"正在抓取 {len(stock_list)} 檔股票資料...")
     result_list = []
@@ -563,6 +665,15 @@ def fetch_stock_data(stock_list, ref_df=None):
             # --- 11. 成交量分析 (低檔盤整+量能放大) ---
             vol_analysis = calculate_volume_analysis(history_data, symbol, stock_list)
 
+            # --- 12. 紀律守則測試 ---
+            df_curr = pd.DataFrame()
+            if not history_data.empty:
+                try:
+                    df_curr = history_data[symbol] if len(stock_list) > 1 else history_data
+                except Exception:
+                    pass
+            rules_res = check_five_trading_rules(df_curr, info)
+
             result_list.append({
                 '證券代號': symbol,
                 '證券名稱': get_tw_name(symbol),
@@ -597,7 +708,10 @@ def fetch_stock_data(stock_list, ref_df=None):
                 '5日均量': vol_analysis['vol_ma5'],
                 '20日均量': vol_analysis['vol_ma20'],
                 '量能倍數': vol_analysis['vol_ratio'],
-                '量能訊號': vol_analysis['vol_signal']
+                '量能訊號': vol_analysis['vol_signal'],
+                # --- 新增: 五大守則 ---
+                '五大守則建議': rules_res.get('五大守則建議', '-'),
+                '換手率': rules_res.get('換手率', np.nan),
             })
 
         except Exception as e:
@@ -984,6 +1098,8 @@ def format_and_export(df):
     # 重新排列欄位順序：將詳細條件 (Pass/Fail) 放在決策建議之後
     cols = [
         '證券代號', '證券名稱', close_col_name, '決策建議',
+        # --- 新增五大守則建議 ---
+        '五大守則建議', '換手率',
         # --- 成交量分析 ---
         '5日均量', '20日均量', '量能倍數', '量能訊號',
         # --- 詳細條件旗標 (Pass/Fail) ---
@@ -1044,6 +1160,9 @@ def format_and_export(df):
         df['5日均量'] = df['5日均量'].apply(fmt_volume)
     if '20日均量' in df.columns:
         df['20日均量'] = df['20日均量'].apply(fmt_volume)
+        
+    if '換手率' in df.columns:
+        df['換手率'] = df['換手率'].apply(lambda x: f"{x*100:.2f}%" if pd.notna(x) and x > 0 else "-")
 
     pct_cols = ['20日報酬率', '殖利率', 'ROE', 'EPS成長率', '外資持股(%)', '毛利率', '營業利益率', '稅後淨利率', '稅前淨利率', '本業比例', '營收成長率', '淨利成長率', '負債比率', '流動比率', '速動比率', '現金流量比']
     for c in pct_cols:

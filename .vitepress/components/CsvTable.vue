@@ -9,10 +9,14 @@
             <table class="sticky-table">
                 <thead>
                     <tr>
-                        <th v-for="(header, index) in headers" :key="index"
-                            :class="{ 'sticky-col': index < fixedColumns, 'first-col': index === 0 }"
-                            :style="getStickyStyle(index, true)">
-                            {{ header }}
+                        <th v-for="(header, index) in headers" :key="index" class="sortable"
+                            :class="{ 'sticky-col': index < fixedColumns, 'first-col': index === 0, sorted: sortIndex === index }"
+                            :style="getStickyStyle(index, true)"
+                            :aria-sort="sortIndex === index ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'"
+                            :title="`點擊依「${header}」排序`"
+                            @click="sortBy(index)">
+                            <span class="th-label">{{ header }}</span>
+                            <span class="sort-indicator">{{ sortIndex === index ? (sortDir === 'asc' ? '▲' : '▼') : '↕' }}</span>
                         </th>
                     </tr>
                 </thead>
@@ -50,9 +54,12 @@ export default {
         return {
             headers: [],
             data: [],
+            originalData: [],
             loading: true,
             error: false,
-            columnWidths: []
+            columnWidths: [],
+            sortIndex: null,
+            sortDir: 'asc'
         };
     },
     mounted() {
@@ -74,6 +81,7 @@ export default {
                 const csvText = await response.text();
                 const parsed = Papa.parse(csvText, { header: true });
                 this.headers = parsed.meta.fields;
+                this.originalData = parsed.data;
                 this.data = parsed.data;
 
                 this.$nextTick(() => {
@@ -88,6 +96,63 @@ export default {
         },
         isNumeric(value) {
             return !isNaN(parseFloat(value)) && isFinite(value);
+        },
+        sortBy(index) {
+            if (this.sortIndex !== index) {
+                this.sortIndex = index;
+                this.sortDir = 'asc';
+            } else if (this.sortDir === 'asc') {
+                this.sortDir = 'desc';
+            } else {
+                this.sortIndex = null;
+                this.sortDir = 'asc';
+            }
+            this.applySort();
+        },
+        applySort() {
+            if (this.sortIndex === null) {
+                this.data = [...this.originalData];
+            } else {
+                const key = this.headers[this.sortIndex];
+                const dir = this.sortDir === 'asc' ? 1 : -1;
+                const values = this.originalData
+                    .map(row => this.parseSortValue(row[key]))
+                    .filter(value => value !== null);
+                const isNumericColumn = values.length > 0
+                    && values.every(value => typeof value === 'number');
+
+                this.data = [...this.originalData].sort((a, b) => {
+                    const av = this.parseSortValue(a[key]);
+                    const bv = this.parseSortValue(b[key]);
+                    // 空值一律排在最後
+                    if (av === null && bv === null) return 0;
+                    if (av === null) return 1;
+                    if (bv === null) return -1;
+
+                    if (isNumericColumn) return (av - bv) * dir;
+                    return String(av).localeCompare(String(bv), 'zh-Hant', { numeric: true }) * dir;
+                });
+            }
+
+            this.$nextTick(() => {
+                this.calculateColumnWidths();
+            });
+        },
+        parseSortValue(raw) {
+            if (raw === undefined || raw === null) return null;
+            const text = String(raw).trim();
+            if (!text || text === '-' || text === '—') return null;
+
+            const cleaned = text.replace(/,/g, '');
+            const match = cleaned.match(/^[+-]?\d+(?:\.\d+)?/);
+            if (!match) return text;
+
+            let value = parseFloat(match[0]);
+            const unit = cleaned.slice(match[0].length);
+            if (unit.startsWith('億')) value *= 1e8;
+            else if (unit.startsWith('萬')) value *= 1e4;
+            else if (unit.startsWith('千')) value *= 1e3;
+            return value;
         },
         calculateColumnWidths() {
             const table = this.$el.querySelector('table');
@@ -128,6 +193,8 @@ export default {
 .table-wrapper {
     /* 確保外部容器有明確高度限制，這樣內部才能捲動 */
     height: calc(100vh - 160px);
+    /* 維持表格緊湊列高 */
+    line-height: 0;
     border: 1px solid var(--vp-c-divider);
     border-radius: 8px;
     overflow: hidden;
@@ -196,6 +263,29 @@ export default {
     background-color: var(--vp-c-bg-soft);
     box-shadow: 0 1px 0 var(--vp-c-divider);
     border-bottom: none;
+}
+
+/* ----------- 欄位排序 ----------- */
+.sticky-table thead th.sortable {
+    cursor: pointer;
+    user-select: none;
+}
+
+.sticky-table thead th.sortable:hover {
+    background-color: var(--vp-c-bg-mute);
+}
+
+.sort-indicator {
+    display: inline-block;
+    width: 1em;
+    margin-left: 4px;
+    font-size: 0.75em;
+    opacity: 0.35;
+}
+
+.sticky-table thead th.sorted .sort-indicator {
+    opacity: 1;
+    color: var(--vp-c-brand-1);
 }
 
 /* ----------- Column Sticky ----------- */
@@ -284,17 +374,22 @@ export default {
   padding-right: 24px !important;
 }
 
-/* 移除 VitePress 自動包裹 <p> 或 <div> 產生的上方空白 */
-.vp-doc p:has(> .table-wrapper),
-.vp-doc div:has(> .table-wrapper) {
-  margin: 0 !important;
-  padding: 0 !important;
-  line-height: 0;
-}
-
 /* 消除 h1 之後的間距 */
 .vp-doc h1 + div .table-wrapper,
 .vp-doc h1 + p .table-wrapper {
   margin-top: 0 !important;
+}
+
+/* 含表格的頁面：隱藏右側大綱並移除右側留白，讓表格延伸到視窗最右緣 */
+@media (min-width: 960px) {
+  .VPDoc:has(.table-wrapper) .aside {
+    display: none !important;
+  }
+
+  .VPDoc:has(.table-wrapper),
+  .VPDoc:has(.table-wrapper) .content,
+  .vp-doc:has(.table-wrapper) {
+    padding-right: 0 !important;
+  }
 }
 </style>

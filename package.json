@@ -8,6 +8,7 @@
     "preview": "vitepress preview"
   },
   "dependencies": {
+    "chart.js": "^4.6.1",
     "papaparse": "^5.4.1"
   }
 }
