@@ -28,12 +28,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r python/requirements.txt
 
-      - name: Execute Stock GVI ThreeFactor script
+      - name: Execute Stock GVI Unified script
         run: |
-          python python/Stock_Filter.py
-          python python/Stock_GVI_SmartMoney.py
-          python python/Stock_GVI_Backtest.py
-          python python/Stock_GVI_ThreeFactor.py
+          python python/Stock_GVI_Unified.py
             
       - name: Commit and Push changes
         run: |
